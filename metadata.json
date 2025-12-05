@@ -1,0 +1,5 @@
+{
+  "name": "DocSales",
+  "description": "A document automation platform for real estate brokers to manage deals, upload documents with OCR, and generate contracts.",
+  "requestFramePermissions": []
+}
