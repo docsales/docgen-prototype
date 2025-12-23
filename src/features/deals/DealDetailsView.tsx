@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Circle, FileText, Home, Users, DollarSign, User, XCircle, Edit, Send, Loader2, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '../../components/Button';
-import { useDeal } from './hooks/useDeals';
+import { ConfirmModal } from '../../components/ConfirmModal';
+import { useDeal, useSendContract } from './hooks/useDeals';
 import type { DealStatus } from '../../types/types';
 import { mergeDealData, formatCPF } from './utils/extractDealData';
 
@@ -14,15 +15,51 @@ export const DealDetailsView: React.FC = () => {
 	// Buscar dados reais do deal
 	const { data: dealData, isLoading, isError, error } = useDeal(dealId);
 
+	// Mutation para enviar contrato
+	const sendContractMutation = useSendContract();
+
 	const [activeTab, setActiveTab] = useState<'data' | 'docs' | 'notes'>('data');
 	const [notes, setNotes] = useState('');
+	const [isSending, setIsSending] = useState(false);
+	const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+	const handleSendContractClick = () => {
+		setShowConfirmModal(true);
+	};
+
+	const handleConfirmSend = async () => {
+		if (!dealId) return;
+
+		setIsSending(true);
+		try {
+			await sendContractMutation.mutateAsync({ dealId });
+			setShowConfirmModal(false);
+			// Mostrar feedback de sucesso
+			setTimeout(() => {
+				alert('✅ Contrato enviado para assinatura com sucesso! Os signatários receberão o documento por e-mail.');
+				// Recarregar página para atualizar o status
+				window.location.reload();
+			}, 300);
+		} catch (error: any) {
+			console.error('Erro ao enviar contrato:', error);
+			setShowConfirmModal(false);
+			setTimeout(() => {
+				alert(
+					`❌ Erro ao enviar contrato: ${error?.response?.data?.message || error?.message || 'Erro desconhecido'}`
+				);
+			}, 300);
+		} finally {
+			setIsSending(false);
+		}
+	};
 
 	const getStatusBadge = (status: DealStatus) => {
 		switch (status) {
 			case 'SIGNED': return <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold uppercase w-fit">Assinado</span>;
 			case 'SENT': return <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold uppercase w-fit">Enviado para assinatura</span>;
+			case 'READ': return <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-bold uppercase w-fit">Visualizado</span>;
+			case 'PARTIALLY_SIGNED': return <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-bold uppercase w-fit">Parcialmente assinado</span>;
 			case 'DRAFT': return <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-bold uppercase w-fit">Rascunho</span>;
-			case 'PREPARATION': return <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-bold uppercase w-fit">Preparando</span>;
 			case 'CANCELED': return <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold uppercase w-fit">Cancelado</span>;
 			case 'REJECTED': return <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold uppercase w-fit">Rejeitado</span>;
 			default: return <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-bold uppercase w-fit">{status}</span>;
@@ -107,10 +144,16 @@ export const DealDetailsView: React.FC = () => {
 								variant="secondary"
 								className="h-10 px-4 text-sm whitespace-nowrap"
 								onClick={() => navigate(`/deals/${dealId}/edit`)}
+								disabled={isSending}
 							>
 								<Edit className="w-4 h-4 mr-2" /> Editar
 							</Button>
-							<Button className="h-10 px-4 text-sm whitespace-nowrap">
+							<Button 
+								className="h-10 px-4 text-sm whitespace-nowrap"
+								onClick={handleSendContractClick}
+								disabled={isSending}
+								isLoading={isSending}
+							>
 								<Send className="w-4 h-4 mr-2" /> Enviar para assinatura
 							</Button>
 						</div>
@@ -384,6 +427,18 @@ export const DealDetailsView: React.FC = () => {
 					</div>
 				</div>
 			)}
+
+			{/* Modal de confirmação para envio */}
+			<ConfirmModal
+				isOpen={showConfirmModal}
+				onClose={() => setShowConfirmModal(false)}
+				onConfirm={handleConfirmSend}
+				title="Enviar para Assinatura"
+				message="Deseja enviar este contrato para assinatura? Os signatários receberão o documento por e-mail do DocSales e poderão assinar digitalmente."
+				confirmText="Enviar Contrato"
+				cancelText="Cancelar"
+				isLoading={isSending}
+			/>
 		</div>
 	);
 };

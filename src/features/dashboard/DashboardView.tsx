@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/Button';
-import { FilePlus, Search, CheckCircle2, History, Clock, Grid, List, Loader2, AlertCircle } from 'lucide-react';
-import type { DealStatus } from '@/types/types';
+import { FilePlus, Search, CheckCircle2, Clock, Grid, List, Loader2, AlertCircle, X, Calendar, FileText, Hourglass } from 'lucide-react';
+import type { DealStatus, Signatory } from '@/types/types';
 import { useDealsInfinite } from '../deals/hooks/useDeals';
+import { UtilsService } from '@/services/utils.service';
 import { useAuth } from '@/hooks/useAuth';
 
 export const DashboardView: React.FC = () => {
@@ -18,14 +19,14 @@ export const DashboardView: React.FC = () => {
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
   // Hook para infinite scroll - busca com termo do servidor
-  const { 
-    data, 
-    isLoading, 
-    isError, 
+  const {
+    data,
+    isLoading,
+    isError,
     error,
     fetchNextPage,
     hasNextPage,
-    isFetchingNextPage 
+    isFetchingNextPage
   } = useDealsInfinite(serverSearchTerm, 20);
 
   // Flatten all pages
@@ -37,8 +38,8 @@ export const DashboardView: React.FC = () => {
     if (!searchTerm) return true;
     const searchLower = searchTerm.toLowerCase();
     const nameMatch = d.name?.toLowerCase().includes(searchLower);
-    const signerMatch = d.signers?.some(s => 
-      s.name.toLowerCase().includes(searchLower) || 
+    const signerMatch = d.signers?.some(s =>
+      s.name.toLowerCase().includes(searchLower) ||
       s.email.toLowerCase().includes(searchLower)
     );
     return nameMatch || signerMatch;
@@ -81,19 +82,80 @@ export const DashboardView: React.FC = () => {
 
   const getStatusBadge = (status: DealStatus) => {
     switch (status) {
-      case 'SIGNED': 
-        return <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold uppercase">Assinado</span>;
-      case 'SENT': 
-        return <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold uppercase">Enviado</span>;
-      case 'DRAFT': 
-        return <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold uppercase">Rascunho</span>;
-      case 'CANCELED': 
-        return <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold uppercase">Cancelado</span>;
-      case 'REJECTED': 
-        return <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded text-xs font-bold uppercase">Rejeitado</span>;
-      default: 
+      case 'SIGNED':
+        return (
+          <div className="flex items-center gap-2 bg-gradient-to-r from-green-100 to-green-50 text-green-700 px-3 py-1.5 rounded-md border border-green-200">
+            <CheckCircle2 className="w-4 h-4" />
+            <span className="text-xs font-bold">Assinado</span>
+          </div>
+        );
+      case 'SENT':
+      case 'READ':
+      case 'PARTIALLY_SIGNED':
+        return (
+          <div className="flex items-center gap-2 bg-gradient-to-r from-amber-100 to-amber-50 text-amber-700 px-3 py-1.5 rounded-md border border-amber-200">
+            <Hourglass className="w-4 h-4" />
+            <span className="text-xs font-bold">Em assinatura</span>
+          </div>
+        );
+      case 'DRAFT':
+        return (
+          <div className="flex items-center gap-2 bg-slate-100 text-slate-700 px-3 py-1.5 rounded-md">
+            <FileText className="w-4 h-4" />
+            <span className="text-xs font-bold">Rascunho</span>
+          </div>
+        );
+      case 'CANCELED':
+        return (
+          <div className="flex items-center gap-2 bg-red-50 text-red-700 px-3 py-1.5 rounded-md border border-red-200">
+            <X className="w-4 h-4" />
+            <span className="text-xs font-bold">Cancelado</span>
+          </div>
+        );
+      case 'REJECTED':
+        return (
+          <div className="flex items-center gap-2 bg-orange-100 text-orange-700 px-3 py-1.5 rounded-md">
+            <X className="w-4 h-4" />
+            <span className="text-xs font-bold">Rejeitado</span>
+          </div>
+        );
+      default:
         return <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold uppercase">{status}</span>;
     }
+  };
+
+  const renderSignersStatus = (deal: any) => {
+    if (!['SENT', 'READ', 'PARTIALLY_SIGNED'].includes(deal.status)) {
+      return null;
+    }
+
+    if (!deal.signers || deal.signers.length === 0) {
+      return null;
+    }
+
+    const waitingSigners = deal.signers.filter((s: Signatory) =>
+      !s.status || s.status === 'waiting' || s.status === 'read'
+    );
+
+    if (waitingSigners.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="mt-4 bg-gradient-to-r from-amber-100 to-amber-50 border border-yellow-200 rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Clock className="w-4 h-4 text-yellow-700" />
+          <span className="text-sm font-semibold text-yellow-800">Aguardando assinatura:</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {waitingSigners.map((signer: Signatory) => (
+            <div key={signer.id} className="text-xs bg-amber-50 text-amber-900 px-2.5 py-1.5 rounded font-medium border border-amber-200">
+              {signer.name}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -153,7 +215,7 @@ export const DashboardView: React.FC = () => {
       {/* Contador de progresso */}
       {!isLoading && !isError && allDeals.length > 0 && (
         <p className="text-slate-500 text-sm">
-          {serverSearchTerm 
+          {serverSearchTerm
             ? `Resultados da busca: ${dealsToDisplay.length} de ${totalDeals} contratos`
             : `Mostrando ${dealsToDisplay.length} de ${totalDeals} contratos`
           }
@@ -197,52 +259,68 @@ export const DashboardView: React.FC = () => {
 
       {/* Content com scroll container */}
       {!isLoading && !isError && allDeals.length > 0 && (
-        <div 
+        <div
           ref={scrollContainerRef}
           className="overflow-y-auto max-h-[calc(100vh-300px)]"
         >
           {viewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-4">
               {dealsToDisplay.map(deal => (
-            <div
-              key={deal.id}
-              className="bg-white rounded-lg border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
-              onClick={() => navigate(`/deals/${deal.id}`)}
-            >
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-xs font-mono text-slate-400">#{deal.id.padStart(5, '0')}</span>
-                <div className="flex gap-3 text-slate-300">
-                  <div className="flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /><span className="text-xs">0</span></div>
-                  <div className="flex items-center gap-1"><History className="w-4 h-4" /><span className="text-xs">1</span></div>
-                </div>
-              </div>
+                <div
+                  key={deal.id}
+                  className="bg-white rounded-lg border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
+                  onClick={() => navigate(`/deals/${deal.id}`)}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-xs font-mono text-slate-400">#{deal.id.padStart(5, '0')}</span>
+                  </div>
 
-              <div className="flex flex-col md:flex-row justify-between gap-4">
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold text-slate-800 group-hover:text-primary transition-colors">
-                    {deal.name || 'Sem nome'}
-                  </h3>
-                  <p className="text-sm text-slate-500">
-                    {deal.signers && deal.signers.length > 0 
-                      ? `${deal.signers[0].name} (${deal.signers[0].email})`
-                      : 'Sem signatários'}
-                  </p>
-                  <div className="mt-3">
-                    {getStatusBadge(deal.status)}
+                  <div className="flex flex-col md:flex-row justify-between gap-4">
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-slate-800 group-hover:text-primary transition-colors">
+                        {deal.name}
+                      </h3>
+                      <p className="text-sm font-medium text-slate-500 mt-1">
+                        {user?.email}
+                      </p>
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between gap-4">
+                          {getStatusBadge(deal.status)}
+                          <div className="flex gap-3 text-slate-300">
+                            <div className="flex items-center gap-1">
+                              <div className="py-1.5 px-1.5 rounded font-medium bg-green-100 text-green-600">
+                                <CheckCircle2 className="w-3 h-3" />
+                              </div>
+                              <span className="text-xs font-bold text-slate-600">{UtilsService.getSignersCount(deal).signed}</span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <div className="py-1.5 px-1.5 rounded font-medium bg-amber-100 text-amber-600">
+                                <Hourglass className="w-3 h-3" />
+                              </div>
+                              <span className="text-xs font-bold text-slate-600">{UtilsService.getSignersCount(deal).waiting}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Status detalhado dos signatários */}
+                      {renderSignersStatus(deal)}
+                    </div>
+                  </div>
+
+                  <div className="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center">
+                    <div className="flex items-center gap-2 text-slate-500 text-sm">
+                      <div className="py-1.5 px-1.5 rounded font-medium bg-gray-100 text-gray-600">
+                        <Calendar className="w-3 h-3 text-gray-400" />
+                      </div>
+                      <span>{deal.expirationDate
+                        ? `Expira em ${new Date(deal.expirationDate).toLocaleDateString('pt-BR')}`
+                        : `Criado em ${new Date(deal.createdAt).toLocaleDateString('pt-BR')}`}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              <div className="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center">
-                <div className="flex items-center gap-2 text-slate-500 text-sm">
-                  <Clock className="w-4 h-4" />
-                  <span>Criado em {new Date(deal.createdAt).toLocaleDateString('pt-BR')}</span>
-                </div>
-                <span className="text-slate-400 text-xs">
-                  Atualizado em {new Date(deal.updatedAt).toLocaleDateString('pt-BR')}
-                </span>
-              </div>
-            </div>
               ))}
             </div>
           ) : (
@@ -271,8 +349,8 @@ export const DashboardView: React.FC = () => {
                         {deal.name || 'Sem nome'}
                       </td>
                       <td className="px-6 py-4 text-slate-600">
-                        {deal.signers && deal.signers.length > 0 
-                          ? deal.signers[0].name 
+                        {deal.signers && deal.signers.length > 0
+                          ? deal.signers[0].name
                           : 'Sem signatários'}
                       </td>
                       <td className="px-6 py-4">{getStatusBadge(deal.status)}</td>

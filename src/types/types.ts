@@ -5,7 +5,9 @@ export interface PaginatedResponse<T> {
   total: number;
 }
 
-export type DealStatus = 'DRAFT' | 'PREPARATION' | 'SENT' | 'SIGNED' | 'CANCELED' | 'REJECTED';
+export type DealStatus = 'DRAFT' | 'SENT' | 'READ' | 'PARTIALLY_SIGNED' | 'SIGNED' | 'REJECTED' | 'CANCELED';
+
+export type SignerStatus = 'waiting' | 'signed' | 'rejected' | 'cancelled' | 'read';
 
 export interface Deal {
   id: string;
@@ -56,6 +58,7 @@ export interface Signatory {
   phoneNumber?: string;
   signingOrder: number;
   role: string;
+  status?: SignerStatus;
   createdAt?: string;
   updatedAt?: string;
 }

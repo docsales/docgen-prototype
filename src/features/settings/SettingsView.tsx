@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Settings as SettingsIcon } from 'lucide-react';
 import { settingsService } from '../../services/settings.service';
 import { useAuth } from '../../hooks/useAuth';
+import { useConfigNotification } from '../../hooks/useConfigNotification';
 import type {
   UserSettings,
   DocumentTemplate,
@@ -15,10 +16,12 @@ import { FolderIdSection } from './components/FolderIdSection';
 import { DocsalesEmailSection } from './components/DocsalesEmailSection';
 import { TemplatesSection } from './components/TemplatesSection';
 import { TemplateForm } from './components/TemplateForm';
+import { WebhooksSection } from './components/WebhooksSection';
 
 export function SettingsView() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { recheck } = useConfigNotification();
   const [isLoading, setIsLoading] = useState(true);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
@@ -53,11 +56,13 @@ export function SettingsView() {
   const handleSaveApiKey = async (value: string) => {
     await settingsService.updateUser({ docsalesApiKey: value });
     setApiKey(value);
+    recheck(); // Revalidar configurações
   };
 
   const handleSaveFolderId = async (value: string) => {
     await settingsService.updateUser({ folderId: value });
     setFolderId(value);
+    recheck(); // Revalidar configurações
   };
 
   const handleSaveDocsalesEmail = async (value: string) => {
@@ -65,6 +70,7 @@ export function SettingsView() {
       docsalesUserEmail: value,
     });
     setUserSettings(updated);
+    recheck(); // Revalidar configurações
   };
 
   const handleAddTemplate = () => {
@@ -87,11 +93,13 @@ export function SettingsView() {
     }
     await loadData();
     setShowTemplateForm(false);
+    recheck(); // Revalidar configurações
   };
 
   const handleDeleteTemplate = async (id: string) => {
     await settingsService.deleteDocumentTemplate(id);
     await loadData();
+    recheck(); // Revalidar configurações
   };
 
   if (isLoading) {
@@ -143,6 +151,8 @@ export function SettingsView() {
             onDelete={handleDeleteTemplate}
             onAdd={handleAddTemplate}
           />
+
+          <WebhooksSection />
         </div>
       </div>
 

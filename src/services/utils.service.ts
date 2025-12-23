@@ -1,4 +1,4 @@
-import type { PaginatedResponse } from "@/types/types";
+import type { Deal, PaginatedResponse } from "@/types/types";
 import { server } from "./api.service";
 
 export class UtilsService {
@@ -39,6 +39,14 @@ export class UtilsService {
       data: data.data,
       next: data.next,
       total: data.total,
+    }
+  }
+
+  static getSignersCount(deal: Deal): { signed: number; waiting: number } {
+    console.log('deal', deal);
+    return {
+      signed: deal.signers?.filter(s => s.status === 'signed').length || 0,
+      waiting: deal.signers?.filter(s => s.status === 'waiting' || s.status === 'read').length || 0,
     }
   }
 }

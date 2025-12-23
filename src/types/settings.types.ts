@@ -46,3 +46,22 @@ export interface UpdateUserDto {
   folderId?: string;
 }
 
+export interface WebhookToken {
+  id: string;
+  userId: string;
+  token: string;
+  lastUsedAt: string | null;
+  isActive: boolean;
+  usageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WebhookEvent {
+  id: string;
+  userId: string;
+  payload: any;
+  headers: any;
+  processedAt: string | null;
+}
+
