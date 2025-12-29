@@ -33,7 +33,8 @@ export const BuyerDocumentsTab: React.FC<BuyerDocumentsTabProps> = ({
 			type: documentType,
 			category: 'buyers',
 			personId: personId,
-			validated: undefined
+			validated: undefined,
+			ocrStatus: 'uploading' as const
 		}));
 
 		const updatedFiles = [...uploadedFiles, ...newFiles];

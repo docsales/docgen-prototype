@@ -26,7 +26,6 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ dealId, dealName, mapp
 
 	const handleGenerate = async (isRegen = false) => {
 		if (!dealId) {
-			console.error('Deal ID is required');
 			setStatus('idle');
 			return;
 		}
@@ -34,102 +33,73 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ dealId, dealName, mapp
 		setIsRegeneration(isRegen);
 		setStatus('generating');
 		try {
-			// Gerar novo preview - o servidor atualiza o deal com os novos valores
-			// O servidor substitui o documento antigo por um novo no Google Docs
-			// e atualiza o deal com o novo ID e URL
 			const generatedPreview = await generatePreviewMutation.mutateAsync({ dealId });
-			
-			// Aguardar um pouco para garantir que o deal foi atualizado no servidor
+
 			await new Promise(resolve => setTimeout(resolve, 300));
-			
-			// Forçar recarregamento do deal para garantir que temos os valores mais recentes
+
 			await refetchDeal();
-			
-			// Atualizar o preview com os dados retornados pela API
-			// Isso garante que temos o ID e URL mais recentes do novo documento gerado
+
 			const newPreview = {
 				edit_url: generatedPreview.edit_url,
 				id: generatedPreview.id,
 				status_code: generatedPreview.status_code,
 			};
-			
+
 			setPreview(newPreview);
 			setStatus('done');
-			
-			console.log('✅ Preview gerado com sucesso:', {
-				id: newPreview.id,
-				url: newPreview.edit_url,
-				message: 'Documento criado no Google Docs e deal atualizado no servidor'
-			});
 
-			// Disparar confetti e mostrar modal de sucesso
 			if (isRegen) {
 				fireQuickConfetti();
 			} else {
 				fireConfetti();
 			}
-			
-			// Mostrar modal após um pequeno delay para o confetti iniciar
+
 			setTimeout(() => {
 				setShowSuccessModal(true);
 			}, 500);
 		} catch (error) {
 			console.error('❌ Erro ao gerar preview:', error);
-			setStatus('done'); // Manter status 'done' para não perder o preview anterior
+			setStatus('done');
 		}
 	};
 
 	useEffect(() => {
-		// Não atualizar status se estiver gerando (evita sobrescrever o loader)
-		if (status === 'generating') {
-			return;
-		}
+		if (status === 'generating') return;
 
 		if (dealId && !isLoading) {
-			// Verificar se o mapeamento mudou (número de campos ou conteúdo dos contractFields)
-			const currentContractFields = deal?.contractFields 
-				? (typeof deal.contractFields === 'string' 
-					? deal.contractFields 
+			const currentContractFields = deal?.contractFields
+				? (typeof deal.contractFields === 'string'
+					? deal.contractFields
 					: JSON.stringify(deal.contractFields))
 				: null;
-			
-			const mappingChanged = 
+
+			const mappingChanged =
 				previousMappedCountRef.current !== mappedCount ||
 				previousContractFieldsRef.current !== currentContractFields;
 
 			if (deal?.consolidated && deal.consolidated.draftPreviewUrl) {
-				// Se o mapeamento mudou, resetar para permitir regeneração
 				if (mappingChanged && status === 'done') {
-					console.log('🔄 Mapeamento alterado - permitindo regeneração do preview');
 					setStatus('idle');
 					setPreview(null);
 				} else {
-					// Atualizar preview com os valores mais recentes do deal
-					// Isso garante que após regeneração, temos o ID e URL atualizados
 					const newPreview = {
 						edit_url: deal.consolidated.draftPreviewUrl,
 						id: deal.consolidated.generatedDocId,
 						status_code: 200,
 					};
-					
-					// Só atualizar se os valores mudaram (evitar loops)
-					if (!preview || 
-						preview.edit_url !== newPreview.edit_url || 
+
+					if (!preview ||
+						preview.edit_url !== newPreview.edit_url ||
 						preview.id !== newPreview.id) {
-						console.log('📝 Atualizando preview com valores do deal:', {
-							id: newPreview.id,
-							url: newPreview.edit_url
-						});
 						setPreview(newPreview);
 					}
-					
+
 					if (status !== 'done') {
 						setStatus('done');
 					}
 				}
 			}
 
-			// Atualizar refs
 			previousMappedCountRef.current = mappedCount;
 			previousContractFieldsRef.current = currentContractFields;
 		}
@@ -172,9 +142,9 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ dealId, dealName, mapp
 			)}
 
 			{status === 'generating' && (
-				<DocumentWritingLoader 
+				<DocumentWritingLoader
 					title={isRegeneration ? "Regerando seu Documento..." : "Gerando seu Documento..."}
-					description={isRegeneration 
+					description={isRegeneration
 						? "Atualizando o documento com as novas informações..."
 						: "O sistema está aplicando as variáveis no modelo e criando o link no Drive."}
 				/>
@@ -195,9 +165,9 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ dealId, dealName, mapp
 							<ExternalLink className="w-4 h-4" />
 							<span>Abrir no Google Docs</span>
 						</Button>
-						<Button 
-							variant="secondary" 
-							className="w-full flex items-center gap-2 justify-center" 
+						<Button
+							variant="secondary"
+							className="w-full flex items-center gap-2 justify-center"
 							onClick={() => handleGenerate(true)}
 							disabled={generatePreviewMutation.isPending}
 						>
@@ -218,7 +188,7 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ dealId, dealName, mapp
 				isOpen={showSuccessModal}
 				onClose={() => setShowSuccessModal(false)}
 				title={isRegeneration ? "Preview Atualizado!" : "Documento Pronto!"}
-				description={isRegeneration 
+				description={isRegeneration
 					? "Seu documento foi atualizado com sucesso e está pronto para visualização."
 					: "Seu documento foi gerado com sucesso e está pronto para ser visualizado."}
 				onOpenPreview={() => {

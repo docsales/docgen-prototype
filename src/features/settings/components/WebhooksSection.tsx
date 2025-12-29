@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Webhook, Plus, Copy, CheckCircle2, Loader2 } from 'lucide-react';
+import { Webhook, Plus, Copy, CheckCircle2, Loader2, X, Eye } from 'lucide-react';
 import { Button } from '@/components/Button';
 import { webhooksService } from '@/services/webhooks.service';
 import { useWebhookEventsInfinite } from '../hooks/useWebhooks';
@@ -15,6 +15,7 @@ export function WebhooksSection() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [showEvents, setShowEvents] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
 
   // Refs para infinite scroll
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -94,6 +95,27 @@ export function WebhooksSection() {
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  const formatJsonForDisplay = (data: any): string => {
+    if (typeof data === 'string') {
+      try {
+        const parsed = JSON.parse(data);
+        return JSON.stringify(parsed, null, 2);
+      } catch {
+        return data;
+      }
+    }
+
+    return JSON.stringify(data, null, 2);
+  };
+
+  const truncateJson = (json: any, maxLength: number = 200): string => {
+    const jsonString = formatJsonForDisplay(json);
+    if (jsonString.length <= maxLength) {
+      return jsonString;
+    }
+    return jsonString.substring(0, maxLength) + '...';
   };
 
   return (
@@ -214,23 +236,37 @@ export function WebhooksSection() {
               ) : (
                 <>
                   <div className="max-h-96 overflow-y-auto space-y-3">
-                    {allEvents.map((event) => (
-                      <div
-                        key={event.id}
-                        className="border border-slate-200 rounded-lg p-4 bg-white"
-                      >
-                        <div className="flex items-start justify-between gap-4 mb-2">
-                          <span className="text-xs font-semibold text-slate-500">
-                            {event.processedAt && formatDate(event.processedAt)}
-                          </span>
+                    {allEvents.map((event) => {
+                      const jsonString = JSON.stringify(event.payload, null, 2);
+                      const isTruncated = jsonString.length > 200;
+
+                      return (
+                        <div
+                          key={event.id}
+                          className="border border-slate-200 rounded-lg p-4 bg-white"
+                        >
+                          <div className="flex items-start justify-between gap-4 mb-2">
+                            <span className="text-xs font-semibold text-slate-500">
+                              {event.processedAt && formatDate(event.processedAt)}
+                            </span>
+                            {isTruncated && (
+                              <button
+                                onClick={() => setSelectedEvent(event)}
+                                className="cursor-pointer flex items-center gap-1 px-2 py-1 text-xs text-[#ef0474] hover:bg-[#ef0474]/10 rounded transition-colors"
+                              >
+                                <Eye className="w-3 h-3" />
+                                Ver completo
+                              </button>
+                            )}
+                          </div>
+                          <div className="bg-slate-50 rounded p-3 font-mono text-xs overflow-x-auto">
+                            <pre className="text-slate-700 whitespace-pre-wrap break-words">
+                              {truncateJson(event.payload)}
+                            </pre>
+                          </div>
                         </div>
-                        <div className="bg-slate-50 rounded p-3 font-mono text-xs overflow-x-auto">
-                          <pre className="text-slate-700">
-                            {JSON.stringify(event.payload, null, 2)}
-                          </pre>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
 
                     {/* Loading indicator para infinite scroll */}
                     <div ref={loadMoreRef} className="py-4">
@@ -251,6 +287,58 @@ export function WebhooksSection() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Modal para visualizar evento completo */}
+      {selectedEvent && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setSelectedEvent(null)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-slate-200">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-800">Evento Completo</h3>
+                {selectedEvent.processedAt && (
+                  <p className="text-sm text-slate-500 mt-1">
+                    {formatDate(selectedEvent.processedAt)}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedEvent(null)}
+                className="cursor-pointer text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-auto p-6">
+              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                <pre className="font-mono text-xs text-slate-700 whitespace-pre-wrap break-words overflow-x-auto">
+                  {formatJsonForDisplay(selectedEvent.payload)}
+                </pre>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end p-6 border-t border-slate-200">
+              <Button
+                type="button"
+                onClick={() => setSelectedEvent(null)}
+                variant="secondary"
+              >
+                Fechar
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

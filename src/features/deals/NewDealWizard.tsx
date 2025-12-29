@@ -59,6 +59,8 @@ export const NewDealWizard: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isCreatingDeal, setIsCreatingDeal] = useState(false);
+  const [isSavingMappings, setIsSavingMappings] = useState(false);
 
   const createDealMutation = useCreateDeal();
   const updateDealMutation = useUpdateDeal();
@@ -168,7 +170,7 @@ export const NewDealWizard: React.FC = () => {
         });
 
         setDocuments(loadedFiles);
-        
+
         // Gerar ocrData a partir dos documentos carregados
         const ocrDataFromDocs = generateOcrDataFromFiles(loadedFiles);
         if (ocrDataFromDocs.length > 0) {
@@ -192,7 +194,7 @@ export const NewDealWizard: React.FC = () => {
     setSaveSuccess(false);
     setSaveError(null);
 
-    try {      
+    try {
       const updatedDeal = await updateDealMutation.mutateAsync({
         dealId,
         payload: {
@@ -204,6 +206,7 @@ export const NewDealWizard: React.FC = () => {
             useFgts: configData.useFgts,
             bankFinancing: configData.bankFinancing,
             consortiumLetter: configData.consortiumLetter,
+            contractValue: configData.contractValue,
             sellers: configData.sellers,
             buyers: configData.buyers,
             propertyState: configData.propertyState,
@@ -242,7 +245,6 @@ export const NewDealWizard: React.FC = () => {
     setSaveError(null);
 
     try {
-      // Converter mappings para o formato JSON simples (apenas valores)
       const contractFieldsJson: Record<string, string> = {};
       Object.entries(mappings).forEach(([fieldId, mapping]) => {
         contractFieldsJson[fieldId] = mapping.value;
@@ -309,7 +311,14 @@ export const NewDealWizard: React.FC = () => {
   const isStepValid = (stepIndex: number): boolean => {
     switch (stepIndex) {
       case 1:
-        return configData.name.trim().length > 0 &&
+        return (
+          !!configData.name &&
+          configData.name.trim().length > 0 &&
+          !!configData.docTemplateId &&
+          configData.docTemplateId.trim().length > 0 &&
+          !!configData.expiration_date &&
+          !!configData.contract_end
+        ) &&
           configData.sellers.length > 0 &&
           configData.buyers.length > 0;
       case 2:
@@ -331,6 +340,7 @@ export const NewDealWizard: React.FC = () => {
     if (!isStepValid(step)) return;
 
     if (step === 1 && !dealId && !editDealId) {
+      setIsCreatingDeal(true);
       try {
         const newDeal = await createDealMutation.mutateAsync({
           name: configData.name,
@@ -342,6 +352,7 @@ export const NewDealWizard: React.FC = () => {
             useFgts: configData.useFgts,
             bankFinancing: configData.bankFinancing,
             consortiumLetter: configData.consortiumLetter,
+            contractValue: configData.contractValue,
             sellers: configData.sellers,
             buyers: configData.buyers,
             propertyState: configData.propertyState,
@@ -353,14 +364,55 @@ export const NewDealWizard: React.FC = () => {
         setDealId(newDeal.id);
       } catch (error) {
         console.error('❌ Erro ao criar deal:', error);
+        setSaveError('Erro ao criar proposta. Tente novamente.');
+        setTimeout(() => setSaveError(null), 5000);
+        setIsCreatingDeal(false);
         return;
+      } finally {
+        setIsCreatingDeal(false);
       }
     } else if (editDealId && !dealId) {
       setDealId(editDealId);
     }
 
+    // Salvar configurações ao avançar da etapa 1 quando o deal já existe
+    if (step === 1 && dealId) {
+      setIsCreatingDeal(true);
+      try {
+        await updateDealMutation.mutateAsync({
+          dealId,
+          payload: {
+            name: configData.name,
+            docTemplateId: configData.docTemplateId,
+            expirationDate: configData.expiration_date,
+            contractEnd: configData.contract_end,
+            metadata: {
+              useFgts: configData.useFgts,
+              bankFinancing: configData.bankFinancing,
+              consortiumLetter: configData.consortiumLetter,
+              contractValue: configData.contractValue,
+              sellers: configData.sellers,
+              buyers: configData.buyers,
+              propertyState: configData.propertyState,
+              propertyType: configData.propertyType,
+              deedCount: configData.deedCount,
+            },
+          },
+        });
+      } catch (error: any) {
+        console.error('❌ Erro ao salvar configurações:', error);
+        setSaveError(error?.response?.data?.message || 'Erro ao salvar configurações. Tente novamente.');
+        setTimeout(() => setSaveError(null), 5000);
+        setIsCreatingDeal(false);
+        return;
+      } finally {
+        setIsCreatingDeal(false);
+      }
+    }
+
     // Salvar campos mapeados ao avançar da etapa 3
     if (step === 3 && dealId) {
+      setIsSavingMappings(true);
       try {
         const contractFieldsJson: Record<string, string> = {};
         Object.entries(mappings).forEach(([fieldId, mapping]) => {
@@ -373,10 +425,14 @@ export const NewDealWizard: React.FC = () => {
             contractFields: contractFieldsJson,
           },
         });
-        console.log('✅ Campos mapeados salvos automaticamente');
       } catch (error: any) {
         console.error('❌ Erro ao salvar campos do contrato:', error);
-        // Não bloquear a navegação, apenas logar o erro
+        setSaveError('Erro ao salvar variáveis mapeadas. Tente novamente.');
+        setTimeout(() => setSaveError(null), 5000);
+        setIsSavingMappings(false);
+        return;
+      } finally {
+        setIsSavingMappings(false);
       }
     }
 
@@ -689,12 +745,27 @@ export const NewDealWizard: React.FC = () => {
               {step !== 2 && step !== 4 && (
                 <Button
                   onClick={step === 5 ? handleFinish : nextStep}
-                  disabled={!currentStepValid}
+                  disabled={!currentStepValid || isCreatingDeal || isSavingMappings}
+                  isLoading={isCreatingDeal || isSavingMappings}
                   className={!currentStepValid ? 'opacity-50 grayscale' : ''}
                 >
-                  {step === 5 ? 'Finalizar e Enviar' : 'Continuar'}
-                  {step !== 5 && <ArrowRight className="w-4 h-4" />}
-                  {step === 5 && <Send className="w-4 h-4" />}
+                  {isCreatingDeal ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Criando proposta...
+                    </>
+                  ) : isSavingMappings ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Salvando variáveis...
+                    </>
+                  ) : (
+                    <>
+                      {step === 5 ? 'Finalizar e Enviar' : 'Continuar'}
+                      {step !== 5 && <ArrowRight className="w-4 h-4" />}
+                      {step === 5 && <Send className="w-4 h-4" />}
+                    </>
+                  )}
                 </Button>
               )}
             </div>

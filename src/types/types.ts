@@ -129,6 +129,7 @@ export interface DealConfig {
   useFgts: boolean;
   bankFinancing: boolean;
   consortiumLetter: boolean;
+  contractValue?: string;
   sellers: Person[];
   buyers: Person[];
   propertyState: PropertyState;

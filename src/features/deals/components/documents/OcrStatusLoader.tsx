@@ -2,6 +2,7 @@
  * Componente de feedback visual para status de processamento OCR
  */
 
+import { useState, useEffect } from 'react';
 import { Loader2, CheckCircle2, AlertCircle, Clock, Upload } from 'lucide-react';
 import type { OcrStatus } from '@/types/ocr.types';
 
@@ -13,6 +14,13 @@ interface OcrStatusLoaderProps {
   processingTime?: number;
 }
 
+// Frases amigáveis para o processamento
+const processingMessages = [
+  'Analisando o documento...',
+  'Extraindo informações...',
+  'Processando dados...',
+];
+
 export const OcrStatusLoader: React.FC<OcrStatusLoaderProps> = ({
   status,
   fileName,
@@ -20,6 +28,21 @@ export const OcrStatusLoader: React.FC<OcrStatusLoaderProps> = ({
   progress = 0,
   processingTime,
 }) => {
+  const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
+
+  // Rotação de mensagens durante o processamento
+  useEffect(() => {
+    if (status === 'processing') {
+      const interval = setInterval(() => {
+        setCurrentMessageIndex((prev) => (prev + 1) % processingMessages.length);
+      }, 2000); // Muda a cada 2 segundos
+
+      return () => clearInterval(interval);
+    } else {
+      setCurrentMessageIndex(0);
+    }
+  }, [status]);
+
   // Configuração de status
   const statusConfig = {
     idle: {
@@ -31,28 +54,28 @@ export const OcrStatusLoader: React.FC<OcrStatusLoaderProps> = ({
     },
     uploading: {
       icon: Upload,
-      label: 'Enviando',
+      label: 'Enviando documento',
       color: 'text-blue-600',
       bgColor: 'bg-blue-50',
       borderColor: 'border-blue-200',
     },
     processing: {
       icon: Loader2,
-      label: 'Processando OCR',
+      label: processingMessages[currentMessageIndex],
       color: 'text-purple-600',
       bgColor: 'bg-purple-50',
       borderColor: 'border-purple-200',
     },
     completed: {
       icon: CheckCircle2,
-      label: 'Concluído',
+      label: 'Documento processado',
       color: 'text-green-600',
       bgColor: 'bg-green-50',
       borderColor: 'border-green-200',
     },
     error: {
       icon: AlertCircle,
-      label: 'Erro',
+      label: 'Erro ao processar',
       color: 'text-red-600',
       bgColor: 'bg-red-50',
       borderColor: 'border-red-200',
@@ -93,7 +116,7 @@ export const OcrStatusLoader: React.FC<OcrStatusLoaderProps> = ({
         {/* Conteúdo */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 mb-1">
-            <h4 className={`text-sm font-semibold ${config.color} truncate`}>
+            <h4 className={`text-sm font-semibold ${config.color} ${status === 'processing' ? 'transition-all duration-500' : ''}`}>
               {config.label}
             </h4>
             {processingTime && status === 'completed' && (

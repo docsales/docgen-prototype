@@ -36,7 +36,8 @@ export const PropertyDocumentsTab: React.FC<PropertyDocumentsTabProps> = ({
 			file,
 			type: documentType,
 			category: 'property',
-			validated: undefined
+			validated: undefined,
+			ocrStatus: 'uploading' as const
 		}));
 
 		const updatedFiles = [...uploadedFiles, ...newFiles];

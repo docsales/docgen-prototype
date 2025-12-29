@@ -42,15 +42,8 @@ export const ocrService = {
         formData.append('outputMode', params.outputMode);
       }
 
-      console.log('📤 Enviando documento para OCR:', {
-        fileName: params.file.name,
-        fileSize: params.file.size,
-        documentType: params.metadata.type,
-      });
-
       const response = await server.api.post('/document/ocr/upload', formData, { withCredentials: true });
       const result = response.data;
-      console.log('✅ Documento enviado com sucesso:', result);
 
       return {
         success: result.success,

@@ -69,11 +69,8 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 	useEffect(() => {
 		hasCheckedOnMountRef.current = false;
 		mountTimestampRef.current = Date.now();
-		console.log('📍 DocumentsStep montado');
-		
-		return () => {
-			console.log('📍 DocumentsStep desmontado');
-		};
+
+		return () => {};
 	}, []);
 
 	// Verificar status de arquivos em processamento ao montar ou quando arquivos mudarem
@@ -86,7 +83,7 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 		if (processingFiles.length > 0 && !isCheckingStatus) {
 			// Verificar se já passou tempo suficiente desde a última verificação (evitar spam)
 			const timeSinceMount = Date.now() - mountTimestampRef.current;
-			
+
 			if (!hasCheckedOnMountRef.current || timeSinceMount < 2000) {
 				console.log(`🔄 DocumentsStep: ${processingFiles.length} arquivo(s) em processamento - verificando status`);
 				hasCheckedOnMountRef.current = true;
@@ -212,13 +209,16 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 				/>
 			)}
 
-			{/* OCR Status Panel */}
+			{/* Status Panel */}
 			{files.length > 0 && (ocrStats.processing > 0 || ocrStats.uploading > 0 || ocrStats.completed > 0) && (
-				<div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-4 shadow-sm">
-					<div className="flex items-center justify-between mb-3">
-						<div className="flex items-center gap-2">
-							<div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse"></div>
-							<h3 className="font-bold text-purple-900">Status do Processamento OCR</h3>
+				<div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 border border-indigo-200 rounded-2xl p-6 shadow-lg backdrop-blur-sm">
+					<div className="flex items-center justify-between mb-4">
+						<div className="flex items-center gap-3">
+							<div className="relative">
+								<div className="w-4 h-4 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full animate-pulse"></div>
+								<div className="absolute inset-0 w-4 h-4 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full animate-ping opacity-75"></div>
+							</div>
+							<h3 className="font-bold text-lg text-slate-800">Status dos Documentos</h3>
 						</div>
 
 						{/* Botão de refresh manual */}
@@ -226,49 +226,52 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 							<button
 								onClick={handleManualRefresh}
 								disabled={isCheckingStatus}
-								className="cursor-pointer flex items-center gap-2 px-3 py-1.5 bg-white hover:bg-purple-50 rounded-lg border border-purple-300 shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-								title="Verificar status manualmente"
+								className="cursor-pointer flex items-center gap-2 px-4 py-2 bg-white hover:bg-indigo-50 rounded-xl border border-indigo-300 shadow-sm transition-all hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+								title="Atualizar status"
 							>
-								<RotateCw className={`w-4 h-4 text-purple-600 ${isCheckingStatus ? 'animate-spin' : ''}`} />
-								<span className="text-xs font-semibold text-purple-800">
-									{isCheckingStatus ? 'Verificando...' : 'Verificar Status'}
+								<RotateCw className={`w-4 h-4 text-indigo-600 ${isCheckingStatus ? 'animate-spin' : ''}`} />
+								<span className="text-sm font-semibold text-indigo-800">
+									{isCheckingStatus ? 'Atualizando...' : 'Atualizar'}
 								</span>
 							</button>
 						)}
 					</div>
 
-					<div className="grid grid-cols-5 gap-3">
-						<div className="bg-white rounded-lg p-3 text-center border border-slate-200">
-							<div className="text-2xl font-bold text-slate-800">{ocrStats.total}</div>
-							<div className="text-xs text-slate-600">Total</div>
+					<div className="grid grid-cols-5 gap-4">
+						<div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 text-center border border-slate-200 shadow-sm">
+							<div className="text-3xl font-bold text-slate-800 mb-1">{ocrStats.total}</div>
+							<div className="text-xs font-medium text-slate-600 uppercase tracking-wide">Total</div>
 						</div>
-						<div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-200">
-							<div className="text-2xl font-bold text-blue-700">{ocrStats.uploading}</div>
-							<div className="text-xs text-blue-600">Enviando</div>
+						<div className="bg-blue-50/80 backdrop-blur-sm rounded-xl p-4 text-center border border-blue-200 shadow-sm">
+							<div className="text-3xl font-bold text-blue-700 mb-1">{ocrStats.uploading}</div>
+							<div className="text-xs font-medium text-blue-600 uppercase tracking-wide">Enviando</div>
 						</div>
-						<div className="bg-purple-50 rounded-lg p-3 text-center border border-purple-200">
-							<div className="text-2xl font-bold text-purple-700 flex items-center justify-center gap-1">
+						<div className="bg-gradient-to-br from-purple-50 to-indigo-50 backdrop-blur-sm rounded-xl p-4 text-center border border-purple-200 shadow-sm relative overflow-hidden">
+							{ocrStats.processing > 0 && (
+								<div className="absolute inset-0 bg-gradient-to-r from-purple-400/20 to-indigo-400/20 animate-pulse"></div>
+							)}
+							<div className="text-3xl font-bold text-purple-700 mb-1 flex items-center justify-center gap-2 relative z-10">
 								{ocrStats.processing}
 								{ocrStats.processing > 0 && (
 									<div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
 								)}
 							</div>
-							<div className="text-xs text-purple-600">Processando</div>
+							<div className="text-xs font-medium text-purple-600 uppercase tracking-wide relative z-10">Processando</div>
 						</div>
-						<div className="bg-green-50 rounded-lg p-3 text-center border border-green-200">
-							<div className="text-2xl font-bold text-green-700">{ocrStats.completed}</div>
-							<div className="text-xs text-green-600">Concluído</div>
+						<div className="bg-green-50/80 backdrop-blur-sm rounded-xl p-4 text-center border border-green-200 shadow-sm">
+							<div className="text-3xl font-bold text-green-700 mb-1">{ocrStats.completed}</div>
+							<div className="text-xs font-medium text-green-600 uppercase tracking-wide">Concluído</div>
 						</div>
-						<div className="bg-red-50 rounded-lg p-3 text-center border border-red-200">
-							<div className="text-2xl font-bold text-red-700">{ocrStats.error}</div>
-							<div className="text-xs text-red-600">Erro</div>
+						<div className="bg-red-50/80 backdrop-blur-sm rounded-xl p-4 text-center border border-red-200 shadow-sm">
+							<div className="text-3xl font-bold text-red-700 mb-1">{ocrStats.error}</div>
+							<div className="text-xs font-medium text-red-600 uppercase tracking-wide">Erro</div>
 						</div>
 					</div>
 
 					{isOcrProcessing && (
-						<div className="mt-3 flex items-center gap-2 text-sm text-purple-700">
-							<div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-							<span className="font-medium">Processando documentos via LLMWhisperer...</span>
+						<div className="mt-4 flex items-center gap-3 text-sm text-slate-700 bg-white/60 backdrop-blur-sm rounded-lg px-4 py-2 border border-indigo-200">
+							<div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+							<span className="font-medium">Processando seus documentos...</span>
 						</div>
 					)}
 				</div>
