@@ -66,7 +66,8 @@ export interface Signatory {
 export interface UploadedFile {
   id: string;
   file: File;
-  type: string; // The document type ID (e.g., 'RG', 'CPF', 'MATRICULA')
+  type: string; // The PRIMARY document type ID (e.g., 'RG', 'CPF', 'MATRICULA') - backwards compatibility
+  types?: string[]; // Multiple document types this file satisfies (e.g., ['RG', 'CPF'])
   category: 'buyers' | 'sellers' | 'property'; // Which category this document belongs to
   personId?: string; // Links the document to a specific Person ID
   validated?: boolean; // Whether the document has been validated by the server

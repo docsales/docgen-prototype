@@ -58,6 +58,13 @@ export const PersonForm: React.FC<PersonFormProps> = ({
       updated.isSpouse = false;
     }
 
+    // Set default propertyRegime when maritalState becomes casado/uniao_estavel
+    if (field === 'maritalState' && (value === 'casado' || value === 'uniao_estavel')) {
+      if (!updated.propertyRegime) {
+        updated.propertyRegime = 'comunhao_parcial'; // Define o valor padrão
+      }
+    }
+
     // Reset propertyRegime when maritalState is not casado/uniao_estavel
     if (field === 'maritalState' && value !== 'casado' && value !== 'uniao_estavel') {
       updated.propertyRegime = undefined;
@@ -144,9 +151,12 @@ export const PersonForm: React.FC<PersonFormProps> = ({
                 <span className="label-text font-medium">Regime de Bens</span>
               </label>
               <select
-                className="select select-bordered w-full"
+                className="select select-bordered w-full bg-white"
                 value={person.propertyRegime || 'comunhao_parcial'}
-                onChange={(e) => handleChange('propertyRegime', e.target.value as PropertyRegime)}
+                onChange={(e) => {
+                  const value = e.target.value as PropertyRegime;
+                  handleChange('propertyRegime', value);
+                }}
               >
                 {PROPERTY_REGIME_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>

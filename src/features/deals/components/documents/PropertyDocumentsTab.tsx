@@ -1,9 +1,11 @@
-import { Home } from 'lucide-react';
+import { useState } from 'react';
+import { Home, AlertCircle, X } from 'lucide-react';
 import type { PropertyState, PropertyType, UploadedFile } from '@/types/types';
 import { DocumentRequirementItem } from './DocumentRequirementItem';
 import { AlertBanner } from './AlertBanner';
 import type { ConsolidatedChecklist } from '@/types/checklist.types';
 import { generateFileId } from '@/utils/generateFileId';
+import { ocrService } from '@/services/ocr.service';
 
 interface PropertyDocumentsTabProps {
 	propertyState: PropertyState;
@@ -25,6 +27,8 @@ export const PropertyDocumentsTab: React.FC<PropertyDocumentsTabProps> = ({
 	checklist
 }) => {
 	const propertyFiles = uploadedFiles.filter(f => f.category === 'property');
+	const [linkingFileId, setLinkingFileId] = useState<string | null>(null);
+	const [linkError, setLinkError] = useState<string | null>(null);
 	
 	// Obter documentos da API ou fallback para array vazio
 	const requiredDocuments = checklist?.imovel.documentos || [];
@@ -35,6 +39,7 @@ export const PropertyDocumentsTab: React.FC<PropertyDocumentsTabProps> = ({
 			id: generateFileId(),
 			file,
 			type: documentType,
+			types: [documentType], // Initialize types array
 			category: 'property',
 			validated: undefined,
 			ocrStatus: 'uploading' as const
@@ -46,12 +51,86 @@ export const PropertyDocumentsTab: React.FC<PropertyDocumentsTabProps> = ({
 		// A validação agora é automática via OCR quando o processamento completar
 	};
 
+	const handleLinkExistingFile = async (fileId: string, documentType: string) => {
+		setLinkingFileId(fileId);
+		setLinkError(null);
+
+		// Encontrar o arquivo original
+		const sourceFile = uploadedFiles.find(f => f.id === fileId);
+		if (!sourceFile) {
+			console.error('❌ Arquivo original não encontrado:', fileId);
+			setLinkError('Arquivo não encontrado. Tente novamente.');
+			setLinkingFileId(null);
+			return;
+		}
+		
+		if (!sourceFile.documentId) {
+			console.error('❌ Arquivo sem documentId:', {
+				fileId: sourceFile.id,
+				fileName: sourceFile.file.name,
+				ocrStatus: sourceFile.ocrStatus,
+				validated: sourceFile.validated,
+				documentId: sourceFile.documentId
+			});
+			setLinkError('O documento ainda não foi salvo no banco de dados. Aguarde o processamento.');
+			setLinkingFileId(null);
+			return;
+		}
+
+		try {
+			// Chamar API para criar novo documento no banco
+			const result = await ocrService.linkDocumentType(sourceFile.documentId, documentType);
+
+			if (!result.success) {
+				console.error('❌ Erro ao vincular documento:', result.error);
+				setLinkError(`Erro ao vincular documento: ${result.error}`);
+				setLinkingFileId(null);
+				return;
+			}
+
+			// Criar novo UploadedFile que compartilha dados do original
+			const newFile: UploadedFile = {
+				...sourceFile,
+				id: generateFileId(), // Novo ID local
+				documentId: result.documentId, // Novo ID do banco
+				type: documentType,
+				types: [documentType],
+			};
+
+			// Adicionar ao array de arquivos
+			onFilesChange([...uploadedFiles, newFile]);
+			console.log(`✓ Documento vinculado a ${documentType} (novo ID: ${result.documentId})`);
+
+		} catch (error) {
+			console.error('❌ Erro ao vincular documento:', error);
+			setLinkError('Erro ao vincular documento. Tente novamente.');
+		} finally {
+			setLinkingFileId(null);
+		}
+	};
+
 	return (
 		<div className="space-y-6">
 			<div className="flex items-center gap-3 mb-6">
 				<Home className="w-6 h-6 text-primary" />
 				<h3 className="text-xl font-bold text-slate-800">Documentos do Imóvel</h3>
 			</div>
+
+			{/* Erro de vinculação */}
+			{linkError && (
+				<div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 animate-in fade-in">
+					<AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+					<div className="flex-1">
+						<p className="text-sm text-red-800">{linkError}</p>
+					</div>
+					<button
+						onClick={() => setLinkError(null)}
+						className="cursor-pointer text-red-400 hover:text-red-600 transition-colors"
+					>
+						<X className="w-4 h-4" />
+					</button>
+				</div>
+			)}
 
 			{/* Alertas */}
 			{alerts.length > 0 && (
@@ -84,8 +163,11 @@ export const PropertyDocumentsTab: React.FC<PropertyDocumentsTabProps> = ({
 							documentName={doc.nome}
 							description={doc.observacao}
 							uploadedFiles={propertyFiles}
+							allFiles={propertyFiles}
 							onFileUpload={handleFileUpload}
 							onRemoveFile={onRemoveFile}
+							onLinkExistingFile={handleLinkExistingFile}
+							linkingFileId={linkingFileId}
 						/>
 					))
 				) : (

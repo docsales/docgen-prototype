@@ -1,9 +1,11 @@
-import { Users } from 'lucide-react';
+import { useState } from 'react';
+import { Users, AlertCircle, X } from 'lucide-react';
 import type { Person, UploadedFile } from '@/types/types';
 import { DocumentRequirementItem } from './DocumentRequirementItem';
 import { AlertBanner } from './AlertBanner';
 import type { ConsolidatedChecklist } from '@/types/checklist.types';
 import { generateFileId } from '@/utils/generateFileId';
+import { ocrService } from '@/services/ocr.service';
 
 interface BuyerDocumentsTabProps {
 	buyers: Person[];
@@ -21,6 +23,8 @@ export const BuyerDocumentsTab: React.FC<BuyerDocumentsTabProps> = ({
 	checklist
 }) => {
 	const buyerFiles = uploadedFiles.filter(f => f.category === 'buyers');
+	const [linkingFileId, setLinkingFileId] = useState<string | null>(null);
+	const [linkError, setLinkError] = useState<string | null>(null);
 	
 	// Obter documentos da API ou fallback para array vazio
 	const requiredDocuments = checklist?.compradores.documentos || [];
@@ -31,6 +35,7 @@ export const BuyerDocumentsTab: React.FC<BuyerDocumentsTabProps> = ({
 			id: generateFileId(),
 			file,
 			type: documentType,
+			types: [documentType], // Initialize types array
 			category: 'buyers',
 			personId: personId,
 			validated: undefined,
@@ -43,12 +48,86 @@ export const BuyerDocumentsTab: React.FC<BuyerDocumentsTabProps> = ({
 		// A validação agora é automática via OCR quando o processamento completar
 	};
 
+	const handleLinkExistingFile = async (fileId: string, documentType: string) => {
+		setLinkingFileId(fileId);
+		setLinkError(null);
+
+		// Encontrar o arquivo original
+		const sourceFile = uploadedFiles.find(f => f.id === fileId);
+		if (!sourceFile) {
+			console.error('❌ Arquivo original não encontrado:', fileId);
+			setLinkError('Arquivo não encontrado. Tente novamente.');
+			setLinkingFileId(null);
+			return;
+		}
+		
+		if (!sourceFile.documentId) {
+			console.error('❌ Arquivo sem documentId:', {
+				fileId: sourceFile.id,
+				fileName: sourceFile.file.name,
+				ocrStatus: sourceFile.ocrStatus,
+				validated: sourceFile.validated,
+				documentId: sourceFile.documentId
+			});
+			setLinkError('O documento ainda não foi salvo no banco de dados. Aguarde o processamento.');
+			setLinkingFileId(null);
+			return;
+		}
+
+		try {
+			// Chamar API para criar novo documento no banco
+			const result = await ocrService.linkDocumentType(sourceFile.documentId, documentType);
+
+			if (!result.success) {
+				console.error('❌ Erro ao vincular documento:', result.error);
+				setLinkError(`Erro ao vincular documento: ${result.error}`);
+				setLinkingFileId(null);
+				return;
+			}
+
+			// Criar novo UploadedFile que compartilha dados do original
+			const newFile: UploadedFile = {
+				...sourceFile,
+				id: generateFileId(), // Novo ID local
+				documentId: result.documentId, // Novo ID do banco
+				type: documentType,
+				types: [documentType],
+			};
+
+			// Adicionar ao array de arquivos
+			onFilesChange([...uploadedFiles, newFile]);
+			console.log(`✓ Documento vinculado a ${documentType} (novo ID: ${result.documentId})`);
+
+		} catch (error) {
+			console.error('❌ Erro ao vincular documento:', error);
+			setLinkError('Erro ao vincular documento. Tente novamente.');
+		} finally {
+			setLinkingFileId(null);
+		}
+	};
+
 	return (
 		<div className="space-y-6">
 			<div className="flex items-center gap-3 mb-6">
 				<Users className="w-6 h-6 text-primary" />
 				<h3 className="text-xl font-bold text-slate-800">Documentos dos Compradores</h3>
 			</div>
+
+			{/* Erro de vinculação */}
+			{linkError && (
+				<div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 animate-in fade-in">
+					<AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+					<div className="flex-1">
+						<p className="text-sm text-red-800">{linkError}</p>
+					</div>
+					<button
+						onClick={() => setLinkError(null)}
+						className="cursor-pointer text-red-400 hover:text-red-600 transition-colors"
+					>
+						<X className="w-4 h-4" />
+					</button>
+				</div>
+			)}
 
 			{/* Alertas */}
 			{alerts.length > 0 && (
@@ -60,8 +139,18 @@ export const BuyerDocumentsTab: React.FC<BuyerDocumentsTabProps> = ({
 				// Filtrar documentos deste comprador específico
 				const buyerSpecificFiles = buyerFiles.filter(f => f.personId === buyer.id);
 				
+				// Determinar se é cônjuge para filtrar documentos corretos
+				const isSpouse = buyer.isSpouse || false;
+				const expectedDe = isSpouse ? 'conjuge' : 'titular';
+				
+				// Filtrar documentos que pertencem a este tipo de pessoa (titular ou cônjuge)
+				// Se não tiver o campo 'de', incluir (documentos genéricos)
+				const buyerDocuments = requiredDocuments.filter(doc => 
+					!doc.de || doc.de === expectedDe
+				);
+				
 				// Contar documentos validados deste comprador
-				const validatedCount = requiredDocuments.filter(doc => {
+				const validatedCount = buyerDocuments.filter(doc => {
 					const relatedFiles = buyerSpecificFiles.filter(f => f.type === doc.id);
 					return relatedFiles.length > 0 && relatedFiles.every(f => f.validated === true);
 				}).length;
@@ -82,7 +171,7 @@ export const BuyerDocumentsTab: React.FC<BuyerDocumentsTabProps> = ({
 								</div>
 								<div className="text-right">
 									<div className="text-2xl font-bold text-green-900">
-										{validatedCount}/{requiredDocuments.length}
+										{validatedCount}/{buyerDocuments.length}
 									</div>
 									<div className="text-xs text-green-700">documentos</div>
 								</div>
@@ -91,17 +180,20 @@ export const BuyerDocumentsTab: React.FC<BuyerDocumentsTabProps> = ({
 
 						{/* Documentos obrigatórios deste comprador */}
 						<div className="space-y-3 pl-2">
-							{requiredDocuments.length > 0 ? (
-								requiredDocuments.map((doc) => (
+							{buyerDocuments.length > 0 ? (
+								buyerDocuments.map((doc) => (
 									<DocumentRequirementItem
-										key={`${doc.id}_${buyer.id}`}
+										key={`${doc.id}_${doc.de || 'generic'}_${buyer.id}`}
 										documentId={doc.id}
 										documentName={doc.nome}
 										description={doc.observacao}
 										uploadedFiles={buyerSpecificFiles}
+										allFiles={buyerFiles}
 										onFileUpload={handleFileUpload}
 										onRemoveFile={onRemoveFile}
+										onLinkExistingFile={handleLinkExistingFile}
 										personId={buyer.id}
+										linkingFileId={linkingFileId}
 									/>
 								))
 							) : (

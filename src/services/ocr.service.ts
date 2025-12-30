@@ -109,6 +109,31 @@ export const ocrService = {
   },
 
   /**
+   * Vincula um documento existente a outro tipo (cria novo registro no banco)
+   */
+  async linkDocumentType(sourceDocumentId: string, newDocumentType: string): Promise<{ success: boolean; documentId?: string; error?: string }> {
+    try {
+      const response = await server.api.post('/document/link-type', 
+        { sourceDocumentId, newDocumentType }, 
+        { withCredentials: true }
+      );
+      
+      const result = response.data;
+      return {
+        success: result.success,
+        documentId: result.documentId,
+      };
+
+    } catch (error: any) {
+      console.error('❌ Erro ao vincular documento:', error);
+      return {
+        success: false,
+        error: error?.response?.data?.message || error.message || 'Erro desconhecido',
+      };
+    }
+  },
+
+  /**
    * Cria metadata para um documento
    */
   createMetadata(

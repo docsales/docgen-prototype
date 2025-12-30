@@ -34,6 +34,10 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 	const [checklistError, setChecklistError] = useState<string | null>(null);
 	const hasCheckedOnMountRef = useRef(false);
 	const mountTimestampRef = useRef<number>(Date.now());
+	
+	// Armazenar o config anterior para comparação
+	const previousConfigRef = useRef<string | null>(null);
+	const isInitialLoadRef = useRef(true);
 
 	// Integração com OCR
 	const {
@@ -98,58 +102,86 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [files.length, isCheckingStatus]); // Usar files.length ao invés de files para evitar loops
 
-	useEffect(() => {
-		const loadChecklist = async () => {
-			setIsLoadingChecklist(true);
-			setChecklistError(null);
+	// Função para carregar o checklist
+	const loadChecklist = useCallback(async () => {
+		setIsLoadingChecklist(true);
+		setChecklistError(null);
 
-			try {
-				const checklists = [];
+		try {
+			const checklists = [];
 
-				for (const seller of config.sellers) {
-					for (const buyer of config.buyers) {
-						const requestData: ChecklistRequestDTO = {
-							vendedor: {
-								tipo: seller.personType,
-								estadoCivil: seller.maritalState,
-								regimeBens: seller.propertyRegime
-							},
-							comprador: {
-								tipo: buyer.personType,
-								estadoCivil: buyer.maritalState,
-								regimeBens: buyer.propertyRegime,
-								vaiFinanciar: config.bankFinancing
-							},
-							imovel: {
-								situacao: config.propertyState,
-								tipoImovel: config.propertyType
-							}
-						};
-
-						const response = await documentChecklistService.generateChecklist(requestData);
-
-						if (response && response.sucesso) {
-							checklists.push(response.dados);
+			for (const seller of config.sellers) {
+				for (const buyer of config.buyers) {
+					const requestData: ChecklistRequestDTO = {
+						vendedor: {
+							tipo: seller.personType,
+							estadoCivil: seller.maritalState,
+							regimeBens: seller.propertyRegime
+						},
+						comprador: {
+							tipo: buyer.personType,
+							estadoCivil: buyer.maritalState,
+							regimeBens: buyer.propertyRegime,
+							vaiFinanciar: config.bankFinancing
+						},
+						imovel: {
+							situacao: config.propertyState,
+							tipoImovel: config.propertyType
 						}
+					};
+
+					const response = await documentChecklistService.generateChecklist(requestData);
+
+					if (response && response.sucesso) {
+						checklists.push(response.dados);
 					}
 				}
-
-				if (checklists.length > 0) {
-					const consolidated = documentChecklistService.consolidateMultipleChecklists(checklists);
-					setChecklist(consolidated);
-				} else {
-					setChecklistError('Não foi possível gerar o checklist de documentos. Por favor, tente novamente.');
-				}
-			} catch (error) {
-				console.error('Erro ao carregar checklist:', error);
-				setChecklistError('Erro ao carregar checklist de documentos');
-			} finally {
-				setIsLoadingChecklist(false);
 			}
-		};
 
-		loadChecklist();
+			if (checklists.length > 0) {
+				const consolidated = documentChecklistService.consolidateMultipleChecklists(checklists);
+				setChecklist(consolidated);
+				console.log('✅ Checklist criado com sucesso');
+			} else {
+				setChecklistError('Não foi possível gerar o checklist de documentos. Por favor, tente novamente.');
+			}
+		} catch (error) {
+			console.error('Erro ao carregar checklist:', error);
+			setChecklistError('Erro ao carregar checklist de documentos');
+		} finally {
+			setIsLoadingChecklist(false);
+		}
 	}, [config]);
+
+	// Carregar checklist apenas quando o config mudar de verdade
+	useEffect(() => {
+		// Criar uma representação em string das configurações relevantes para comparação
+		const configKey = JSON.stringify({
+			sellers: config.sellers.map(s => ({
+				personType: s.personType,
+				maritalState: s.maritalState,
+				propertyRegime: s.propertyRegime
+			})),
+			buyers: config.buyers.map(b => ({
+				personType: b.personType,
+				maritalState: b.maritalState,
+				propertyRegime: b.propertyRegime
+			})),
+			bankFinancing: config.bankFinancing,
+			propertyState: config.propertyState,
+			propertyType: config.propertyType
+		});
+
+		// Se é a primeira carga OU se o config mudou, carregar o checklist
+		if (isInitialLoadRef.current || previousConfigRef.current !== configKey) {
+			console.log(isInitialLoadRef.current ? '📋 Carregando checklist inicial...' : '🔄 Config mudou - recriando checklist...');
+			previousConfigRef.current = configKey;
+			isInitialLoadRef.current = false;
+			loadChecklist();
+		} else {
+			console.log('✓ Config não mudou - reutilizando checklist existente');
+		}
+	}, [config, loadChecklist]);
 
 	const handleRemoveFile = (fileId: string) => {
 		if (!dealId) return;
@@ -187,9 +219,16 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 					<h3 className="text-xl font-bold text-slate-800">Erro ao Carregar Checklist</h3>
 					<p className="text-slate-500">{checklistError}</p>
 					<div className="flex justify-center">
-						<Button onClick={() => window.location.reload()} className="btn-md">
-							<RefreshCcw className="w-5 h-5" />
-							Tentar Novamente
+						<Button 
+							onClick={() => {
+								console.log('🔄 Tentando recarregar checklist...');
+								loadChecklist();
+							}} 
+							className="btn-md"
+							disabled={isLoadingChecklist}
+						>
+							<RefreshCcw className={`w-5 h-5 ${isLoadingChecklist ? 'animate-spin' : ''}`} />
+							{isLoadingChecklist ? 'Carregando...' : 'Tentar Novamente'}
 						</Button>
 					</div>
 				</div>

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { CheckCircle2, XCircle, Clock, Upload, X } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, Upload, X, Link2, ChevronDown } from 'lucide-react';
 import type { UploadedFile } from '@/types/types';
 import { OcrStatusLoader } from './OcrStatusLoader';
 import { OcrStatus } from '@/types/ocr.types';
@@ -9,32 +9,64 @@ interface DocumentRequirementItemProps {
 	documentName: string;
 	description?: string;
 	uploadedFiles: UploadedFile[];
+	allFiles?: UploadedFile[]; // Todos os arquivos disponíveis para reutilização
 	onFileUpload: (files: File[], documentType: string, personId?: string) => void;
 	onRemoveFile?: (fileId: string) => void;
+	onLinkExistingFile?: (fileId: string, documentType: string) => void;
 	personId?: string;
 	maxFiles?: number;
+	linkingFileId?: string | null; // ID do arquivo que está sendo vinculado
 }
+
+// Helper function to check if a file satisfies a document type
+const fileSatisfiesType = (file: UploadedFile, documentType: string): boolean => {
+	if (file.type === documentType) return true;
+	if (file.types && file.types.includes(documentType)) return true;
+	return false;
+};
 
 export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = ({
 	documentId,
 	documentName,
 	description,
 	uploadedFiles,
+	allFiles,
 	onFileUpload,
 	onRemoveFile,
+	onLinkExistingFile,
 	personId,
-	maxFiles = 5
+	maxFiles = 5,
+	linkingFileId
 }) => {
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [isDragging, setIsDragging] = useState(false);
+	const [showLinkMenu, setShowLinkMenu] = useState(false);
 
 	const relatedFiles = uploadedFiles.filter(f => {
-		if (f.type !== documentId) return false;
-		
+		// Check if file satisfies this document type (either primary type or in types array)
+		if (!fileSatisfiesType(f, documentId)) return false;
+
+		// Check if personId matches
 		if (personId === undefined && f.personId === undefined) return true;
-		
+
 		return f.personId === personId;
 	});
+
+	// Find other validated files from the same person/category that could be reused
+	const reusableFiles = (allFiles || uploadedFiles).filter(file => {
+		if (personId !== undefined && file.personId !== personId) return false;
+		if (personId === undefined && file.personId !== undefined) return false;
+
+		if (fileSatisfiesType(file, documentId)) return false;
+
+		if (file.ocrStatus !== OcrStatus.COMPLETED || !file.validated) return false;
+
+		// Deve ter documentId do banco de dados para poder vincular
+		if (!file.documentId) return false;
+
+		return true;
+	});
+
 	const isValidated = relatedFiles.length > 0 && relatedFiles.every(f => f.validated === true);
 	const hasError = relatedFiles.some(f => f.validated === false);
 	const isPending = relatedFiles.length > 0 && relatedFiles.some(f => f.validated === undefined);
@@ -71,7 +103,7 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 			const fileArray = Array.from(e.target.files);
 			const remainingSlots = maxFiles - relatedFiles.length;
 			const filesToUpload = fileArray.slice(0, remainingSlots);
-			
+
 			if (filesToUpload.length > 0) {
 				onFileUpload(filesToUpload, documentId, personId);
 			}
@@ -85,7 +117,7 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 		if ((e.target as HTMLElement).closest('[data-remove-button]')) {
 			return;
 		}
-		
+
 		if (canAddMore) {
 			fileInputRef.current?.click();
 		}
@@ -111,14 +143,14 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 	const handleDragLeave = (e: React.DragEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
-		
+
 		// Verificar se ainda está dentro da área de drop
 		// Se o relatedTarget (para onde o mouse foi) ainda está dentro do currentTarget,
 		// significa que só mudou de elemento filho, não saiu da área
 		if (e.currentTarget.contains(e.relatedTarget as Node)) {
 			return;
 		}
-		
+
 		setIsDragging(false);
 	};
 
@@ -132,25 +164,25 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 		const files = Array.from(e.dataTransfer.files);
 		const remainingSlots = maxFiles - relatedFiles.length;
 		const filesToUpload = files.slice(0, remainingSlots);
-		
+
 		if (filesToUpload.length > 0) {
 			onFileUpload(filesToUpload, documentId, personId);
 		}
 	};
 
 	return (
-		<div 
+		<div
 			className={`
 				bg-white p-4 rounded-lg border-2 transition-all
 				${isValidated
 					? 'border-green-200 bg-green-50/30'
 					: hasError
-					? 'border-red-200 bg-red-50/30'
-					: isPending
-					? 'border-yellow-200 bg-yellow-50/30'
-					: isDragging
-					? 'border-blue-400 bg-blue-50 border-dashed scale-[1.02] shadow-lg'
-					: 'border-slate-200 hover:border-slate-300 border-dashed'
+						? 'border-red-200 bg-red-50/30'
+						: isPending
+							? 'border-yellow-200 bg-yellow-50/30'
+							: isDragging
+								? 'border-blue-400 bg-blue-50 border-dashed scale-[1.02] shadow-lg'
+								: 'border-slate-200 hover:border-slate-600 hover:bg-slate-50 border-dashed'
 				}
 				${canAddMore ? 'cursor-pointer' : ''}
 			`}
@@ -175,7 +207,7 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 						{getStatusIcon()}
 						<h4 className="font-semibold text-slate-800">{documentName}</h4>
 					</div>
-					
+
 					{description && (
 						<p className="text-sm text-slate-600 mb-3">{description}</p>
 					)}
@@ -186,7 +218,7 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 							{relatedFiles.map((file) => {
 								// Verificar se tem status OCR
 								const hasOcrStatus = file.ocrStatus && file.ocrStatus !== OcrStatus.IDLE;
-								
+
 								return (
 									<div key={file.id}>
 										{/* Mostrar loader OCR se estiver processando */}
@@ -200,22 +232,26 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 												/>
 											</div>
 										)}
-										
+
 										{/* Card do arquivo */}
-										<div 
-											className={`flex items-center justify-between gap-2 p-2 rounded border ${
-												file.validated === true 
-													? 'bg-green-50 border-green-200' 
-													: file.validated === false
+										<div
+											className={`flex items-center justify-between gap-2 p-2 rounded border ${file.validated === true
+												? 'bg-green-50 border-green-200'
+												: file.validated === false
 													? 'bg-red-50 border-red-200'
 													: 'bg-yellow-50 border-yellow-200'
-											}`}
+												}`}
 										>
 											<div className="flex-1 min-w-0">
 												<div className="flex items-center gap-2 flex-wrap">
 													<span className="text-xs font-bold text-slate-600 uppercase bg-white px-2 py-0.5 rounded">
-														{file.type}
+														{file.types && file.types.length > 1 ? file.types.join(', ') : file.type}
 													</span>
+													{file.types && file.types.length > 1 && (
+														<span className="text-xs text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded">
+															✓ {file.types.length} docs
+														</span>
+													)}
 													<span className="text-xs text-slate-700 truncate font-medium">
 														{file.file.name}
 													</span>
@@ -236,7 +272,7 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 													<p className="text-xs text-red-600 mt-1">{file.validationError}</p>
 												)}
 											</div>
-											
+
 											{onRemoveFile && (
 												<button
 													data-remove-button
@@ -257,14 +293,85 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 						</div>
 					)}
 
-					<div className="flex items-center gap-2">
+					<div className="flex items-center gap-2 flex-wrap">
 						{getStatusText()}
 						{relatedFiles.length > 0 && canAddMore && (
 							<span className="text-xs text-slate-400">
 								({relatedFiles.length}/{maxFiles})
 							</span>
 						)}
+
+						{/* Botão para reutilizar documento existente */}
+						{onLinkExistingFile && reusableFiles.length > 0 && canAddMore && relatedFiles.length === 0 && (
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									setShowLinkMenu(!showLinkMenu);
+								}}
+								disabled={!!linkingFileId}
+								className={`cursor-pointer text-xs px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded border border-blue-200 flex items-center gap-1 transition-colors ${linkingFileId ? 'opacity-50 cursor-not-allowed' : ''}`}
+							>
+								{linkingFileId ? (
+									<>
+										<span className="loading loading-spinner loading-xs"></span>
+										Vinculando...
+									</>
+								) : (
+									<>
+										<Link2 className="w-3 h-3" />
+										Usar documento existente
+										<ChevronDown className="w-3 h-3 transition-transform duration-200" />
+									</>
+								)}
+							</button>
+						)}
 					</div>
+
+					{/* Menu de documentos reutilizáveis */}
+					{showLinkMenu && reusableFiles.length > 0 && (
+						<div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+							<p className="text-xs text-slate-600 font-semibold mb-2">
+								Selecione um documento já enviado:
+							</p>
+							{reusableFiles.map((file) => {
+								const isLinking = linkingFileId === file.id;
+								return (
+									<button
+										key={file.id}
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											onLinkExistingFile?.(file.id, documentId);
+											setShowLinkMenu(false);
+										}}
+										disabled={!!linkingFileId}
+										className={`cursor-pointer w-full text-left p-2 bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50 rounded transition-all flex items-center justify-between gap-2 ${linkingFileId ? 'opacity-50 cursor-not-allowed' : ''}`}
+									>
+										<div className="flex-1 min-w-0">
+											<div className="flex items-center gap-2 flex-wrap">
+												{isLinking && (
+													<span className="loading loading-spinner loading-xs text-blue-600"></span>
+												)}
+												<span className="text-xs font-bold text-slate-600 uppercase bg-slate-100 px-2 py-0.5 rounded">
+													{file.type}
+												</span>
+												<span className="text-xs text-slate-700 truncate font-medium">
+													{file.file.name}
+												</span>
+												{file.types && file.types.length > 1 && (
+													<span className="text-xs text-blue-600 font-medium">
+														(Satisfaz {file.types.length} documentos)
+													</span>
+												)}
+											</div>
+										</div>
+										<Link2 className="w-4 h-4 text-blue-500 flex-shrink-0" />
+									</button>
+								);
+							})}
+						</div>
+					)}
 
 					{/* Mensagem durante drag */}
 					{isDragging && (
