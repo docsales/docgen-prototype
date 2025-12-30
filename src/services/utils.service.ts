@@ -48,4 +48,19 @@ export class UtilsService {
       waiting: deal.signers?.filter(s => s.status === 'waiting' || s.status === 'read').length || 0,
     }
   }
+
+  static getSignerBadge(role: string): { color: string; label: string } {
+    switch(role) {
+      case 'buyer_part':
+        return { color: 'bg-blue-100 text-blue-700', label: 'Comprador' };
+      case 'seller_part':
+        return { color: 'bg-green-100 text-green-700', label: 'Vendedor' };
+      case 'witness':
+        return { color: 'bg-yellow-100 text-yellow-700', label: 'Testemunha' };
+      case 'real_estate_agent':
+        return { color: 'bg-purple-100 text-purple-700', label: 'Corretor' };
+      default:
+        return { color: 'bg-slate-100 text-slate-600', label: role };
+    }
+  }
 }

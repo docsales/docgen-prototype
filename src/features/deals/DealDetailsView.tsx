@@ -3,23 +3,23 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Circle, FileText, Home, Users, DollarSign, User, XCircle, Edit, Send, Loader2, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/ConfirmModal';
-import { useDeal, useSendContract } from './hooks/useDeals';
-import type { DealStatus } from '../../types/types';
+import { useDeal, useRemoveSignatoryFromDeal, useSendContract } from './hooks/useDeals';
+import type { DealStatus, Signatory } from '../../types/types';
 import { mergeDealData, formatCPF } from './utils/extractDealData';
+import { SignerCard } from './components/SignerCard';
 
 export const DealDetailsView: React.FC = () => {
 	const { id } = useParams<{ id: string }>();
 	const navigate = useNavigate();
 	const dealId = id || '';
 
-	// Buscar dados reais do deal
 	const { data: dealData, isLoading, isError, error } = useDeal(dealId);
-
-	// Mutation para enviar contrato
 	const sendContractMutation = useSendContract();
 
-	const [activeTab, setActiveTab] = useState<'data' | 'docs' | 'notes'>('data');
-	const [notes, setNotes] = useState('');
+	const [removeSignerLoading, setRemoveSignerLoading] = useState(false);
+	const removeSignatoryMutation = useRemoveSignatoryFromDeal();
+
+	const [activeTab, setActiveTab] = useState<'data' | 'docs' | 'signers'>('data');
 	const [isSending, setIsSending] = useState(false);
 	const [showConfirmModal, setShowConfirmModal] = useState(false);
 
@@ -52,6 +52,21 @@ export const DealDetailsView: React.FC = () => {
 			setIsSending(false);
 		}
 	};
+
+	const removeSigner = async (signerId: string) => {
+		if (!dealId) return;
+		if (signerId.length < 15) return;
+
+		try {
+			setRemoveSignerLoading(true);
+			await removeSignatoryMutation.mutateAsync({ dealId, signatoryId: signerId });
+			console.log('✅ Signatário removido do banco de dados');
+		} catch (error) {
+			console.error('❌ Erro ao remover signatário do banco:', error);
+		} finally {
+			setRemoveSignerLoading(false);
+		}
+	}
 
 	const getStatusBadge = (status: DealStatus) => {
 		switch (status) {
@@ -93,29 +108,6 @@ export const DealDetailsView: React.FC = () => {
 	// Processar dados do deal com extração de documentos
 	const deal = mergeDealData(dealData);
 
-	const renderTabs = () => (
-		<div className="flex gap-2 mb-6">
-			<button
-				onClick={() => setActiveTab('data')}
-				className={`cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'data' ? 'bg-slate-200 text-slate-800' : 'text-slate-500 hover:bg-slate-100'}`}
-			>
-				Dados Tratados
-			</button>
-			<button
-				onClick={() => setActiveTab('docs')}
-				className={`cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'docs' ? 'bg-slate-200 text-slate-800' : 'text-slate-500 hover:bg-slate-100'}`}
-			>
-				Documentos
-			</button>
-			<button
-				onClick={() => setActiveTab('notes')}
-				className={`cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'notes' ? 'bg-slate-200 text-slate-800' : 'text-slate-500 hover:bg-slate-100'}`}
-			>
-				Observações
-			</button>
-		</div>
-	);
-
 	return (
 		<div className="p-6 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
 			{/* Header */}
@@ -148,7 +140,7 @@ export const DealDetailsView: React.FC = () => {
 							>
 								<Edit className="w-4 h-4 mr-2" /> Editar
 							</Button>
-							<Button 
+							<Button
 								className="h-10 px-4 text-sm whitespace-nowrap"
 								onClick={handleSendContractClick}
 								disabled={isSending}
@@ -180,167 +172,181 @@ export const DealDetailsView: React.FC = () => {
 				</div>
 			)}
 
-			{renderTabs()}
-
-			{/* Tab Content */}
-			{activeTab === 'data' && (
-				<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-					{/* Imóvel */}
-					<div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-						<div className="flex items-center gap-2 mb-4 text-primary">
-							<Home className="w-5 h-5" />
-							<h3 className="font-bold text-lg text-slate-800">Imóvel</h3>
-						</div>
-						<div className="space-y-4">
-							<div>
-								<label className="text-xs text-slate-400 block mb-1">Endereço</label>
-								<p className="text-slate-700 font-medium">{deal.address}</p>
+			<div className="tabs tabs-box bg-slate-100 gap-2 p-4 mb-6">
+				{/* Aba Dados Tratados */}
+				<input
+					type="radio"
+					name="deal_details_tabs"
+					className={`tab px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'data' ? 'bg-white text-slate-800' : 'text-slate-500 hover:bg-white/90 hover:text-slate-400'}`}
+					aria-label="Dados Tratados"
+					defaultChecked
+					onChange={() => setActiveTab('data')}
+				/>
+				<div className="tab-content">
+					<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+						{/* Imóvel */}
+						<div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+							<div className="flex items-center gap-2 mb-4 text-primary">
+								<Home className="w-5 h-5" />
+								<h3 className="font-bold text-lg text-slate-800">Imóvel</h3>
 							</div>
-							<div className="grid grid-cols-2 gap-4">
+							<div className="space-y-4">
 								<div>
-									<label className="text-xs text-slate-400 block mb-1">Matrícula</label>
-									<p className="text-slate-800 font-bold">{deal.matricula}</p>
+									<label className="text-xs text-slate-400 block mb-1">Endereço</label>
+									<p className="text-slate-700 font-medium">{deal.address}</p>
+								</div>
+								<div className="grid grid-cols-2 gap-4">
+									<div>
+										<label className="text-xs text-slate-400 block mb-1">Matrícula</label>
+										<p className="text-slate-800 font-bold">{deal.matricula}</p>
+									</div>
+									<div>
+										<label className="text-xs text-slate-400 block mb-1">Área</label>
+										<p className="text-slate-800 font-bold">{deal.area}</p>
+									</div>
 								</div>
 								<div>
-									<label className="text-xs text-slate-400 block mb-1">Área</label>
-									<p className="text-slate-800 font-bold">{deal.area}</p>
+									<label className="text-xs text-slate-400 block mb-1">Cartório</label>
+									<p className="text-slate-700">{deal.cartorio}</p>
 								</div>
 							</div>
-							<div>
-								<label className="text-xs text-slate-400 block mb-1">Cartório</label>
-								<p className="text-slate-700">{deal.cartorio}</p>
-							</div>
 						</div>
-					</div>
 
-					{/* Condições Comerciais */}
-					<div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-						<div className="flex items-center gap-2 mb-4 text-primary">
-							<DollarSign className="w-5 h-5" />
-							<h3 className="font-bold text-lg text-slate-800">Condições Comerciais</h3>
+						{/* Condições Comerciais */}
+						<div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+							<div className="flex items-center gap-2 mb-4 text-primary">
+								<DollarSign className="w-5 h-5" />
+								<h3 className="font-bold text-lg text-slate-800">Condições Comerciais</h3>
+							</div>
+							<div className="grid grid-cols-2 gap-6 mb-4">
+								<div>
+									<label className="text-xs text-slate-400 block mb-1">Valor Total</label>
+									<p className="text-primary font-bold text-lg">{deal.valor}</p>
+								</div>
+								<div>
+									<label className="text-xs text-slate-400 block mb-1">Entrada</label>
+									<p className="text-slate-800 font-medium text-lg">{deal.entrada}</p>
+								</div>
+							</div>
+							<div className="grid grid-cols-3 gap-4 pt-4 border-t border-slate-100">
+								<div>
+									<label className="text-xs text-slate-400 block mb-1">Financiamento</label>
+									<p className="text-slate-800 font-medium">{deal.financiamento}</p>
+								</div>
+								<div>
+									<label className="text-xs text-slate-400 block mb-1">FGTS</label>
+									<p className="text-slate-800 font-medium">{deal.fgts}</p>
+								</div>
+								<div>
+									<label className="text-xs text-slate-400 block mb-1">Consórcio</label>
+									<p className="text-slate-800 font-medium">{deal.consorcio}</p>
+								</div>
+							</div>
 						</div>
-						<div className="grid grid-cols-2 gap-6 mb-4">
-							<div>
-								<label className="text-xs text-slate-400 block mb-1">Valor Total</label>
-								<p className="text-primary font-bold text-lg">{deal.valor}</p>
-							</div>
-							<div>
-								<label className="text-xs text-slate-400 block mb-1">Entrada</label>
-								<p className="text-slate-800 font-medium text-lg">{deal.entrada}</p>
-							</div>
-						</div>
-						<div className="grid grid-cols-3 gap-4 pt-4 border-t border-slate-100">
-							<div>
-								<label className="text-xs text-slate-400 block mb-1">Financiamento</label>
-								<p className="text-slate-800 font-medium">{deal.financiamento}</p>
-							</div>
-							<div>
-								<label className="text-xs text-slate-400 block mb-1">FGTS</label>
-								<p className="text-slate-800 font-medium">{deal.fgts}</p>
-							</div>
-							<div>
-								<label className="text-xs text-slate-400 block mb-1">Consórcio</label>
-								<p className="text-slate-800 font-medium">{deal.consorcio}</p>
-							</div>
-						</div>
-					</div>
 
-					{/* Comprador */}
-					<div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-						<div className="flex items-center gap-2 mb-2 text-primary">
-							<User className="w-5 h-5" />
-							<h3 className="font-bold text-lg text-slate-800">
-								Comprador{deal.buyers.length !== 1 && 'es'} ({deal.buyers.length})
-							</h3>
-						</div>
-						<p className="text-xs text-slate-400 mb-4">
-							{deal.buyers.length || 0} Pessoa(s)
-						</p>
-						{deal.buyers.length > 0 ? (
-							deal.buyers.map((buyer: any, idx: number) => {
-								// Garantir que temos strings válidas
-								const buyerName = typeof buyer.name === 'string' ? buyer.name : 'Sem nome';
-								const buyerEmail = typeof buyer.email === 'string' ? buyer.email : '';
-								const buyerPhone = typeof buyer.phone === 'string' ? buyer.phone : '';
-								const buyerCpf = typeof buyer.cpf === 'string' ? buyer.cpf : '';
-								const buyerDataSource = typeof buyer.dataSource === 'string' ? buyer.dataSource : '';
+						{/* Comprador */}
+						<div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+							<div className="flex items-center gap-2 mb-2 text-primary">
+								<User className="w-5 h-5" />
+								<h3 className="font-bold text-lg text-slate-800">
+									Comprador{deal.buyers.length !== 1 && 'es'} ({deal.buyers.length})
+								</h3>
+							</div>
+							<p className="text-xs text-slate-400 mb-4">
+								{deal.buyers.length || 0} Pessoa(s)
+							</p>
+							{deal.buyers.length > 0 ? (
+								deal.buyers.map((buyer: any, idx: number) => {
+									// Garantir que temos strings válidas
+									const buyerName = typeof buyer.name === 'string' ? buyer.name : 'Sem nome';
+									const buyerEmail = typeof buyer.email === 'string' ? buyer.email : '';
+									const buyerPhone = typeof buyer.phone === 'string' ? buyer.phone : '';
+									const buyerCpf = typeof buyer.cpf === 'string' ? buyer.cpf : '';
+									const buyerDataSource = typeof buyer.dataSource === 'string' ? buyer.dataSource : '';
 
-								return (
-									<div key={idx} className="bg-slate-50 p-3 rounded-lg flex items-start gap-3 mb-2">
-										<div className="bg-white p-2 rounded-full border border-slate-200">
-											<User className="w-4 h-4 text-slate-400" />
+									return (
+										<div key={idx} className="bg-slate-50 p-3 rounded-lg flex items-start gap-3 mb-2">
+											<div className="bg-white p-2 rounded-full border border-slate-200">
+												<User className="w-4 h-4 text-slate-400" />
+											</div>
+											<div className="flex-1">
+												<p className="font-medium text-slate-800">{buyerName}</p>
+												{buyerCpf && (
+													<p className="text-xs text-slate-600 font-mono">CPF: {formatCPF(buyerCpf)}</p>
+												)}
+												{buyerEmail && <p className="text-xs text-slate-500">{buyerEmail}</p>}
+												{buyerPhone && <p className="text-xs text-slate-500">{buyerPhone}</p>}
+												{buyerDataSource && (
+													<p className="text-xs text-blue-600 mt-1">
+														📄 Extraído de: {buyerDataSource}
+													</p>
+												)}
+											</div>
 										</div>
-										<div className="flex-1">
-											<p className="font-medium text-slate-800">{buyerName}</p>
-											{buyerCpf && (
-												<p className="text-xs text-slate-600 font-mono">CPF: {formatCPF(buyerCpf)}</p>
-											)}
-											{buyerEmail && <p className="text-xs text-slate-500">{buyerEmail}</p>}
-											{buyerPhone && <p className="text-xs text-slate-500">{buyerPhone}</p>}
-											{buyerDataSource && (
-												<p className="text-xs text-blue-600 mt-1">
-													📄 Extraído de: {buyerDataSource}
-												</p>
-											)}
-										</div>
-									</div>
-								);
-							})
-						) : (
-							<p className="text-sm text-slate-400 italic">Nenhum comprador cadastrado</p>
-						)}
-					</div>
-
-					{/* Vendedor */}
-					<div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-						<div className="flex items-center gap-2 mb-2 text-primary">
-							<Users className="w-5 h-5" />
-							<h3 className="font-bold text-lg text-slate-800">
-								Vendedor{deal.sellers.length !== 1 && 'es'} ({deal.sellers.length})
-							</h3>
+									);
+								})
+							) : (
+								<p className="text-sm text-slate-400 italic">Nenhum comprador cadastrado</p>
+							)}
 						</div>
-						<p className="text-xs text-slate-400 mb-4">
-							{deal.sellers.length || 0} Pessoa(s)
-						</p>
-						{deal.sellers.length > 0 ? (
-							deal.sellers.map((seller: any, idx: number) => {
-								// Garantir que temos strings válidas
-								const sellerName = typeof seller.name === 'string' ? seller.name : 'Sem nome';
-								const sellerEmail = typeof seller.email === 'string' ? seller.email : '';
-								const sellerPhone = typeof seller.phone === 'string' ? seller.phone : '';
-								const sellerCpf = typeof seller.cpf === 'string' ? seller.cpf : '';
-								const sellerDataSource = typeof seller.dataSource === 'string' ? seller.dataSource : '';
 
-								return (
-									<div key={idx} className="bg-slate-50 p-3 rounded-lg flex items-start gap-3 mb-2">
-										<div className="bg-white p-2 rounded-full border border-slate-200">
-											<User className="w-4 h-4 text-slate-400" />
+						{/* Vendedor */}
+						<div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+							<div className="flex items-center gap-2 mb-2 text-primary">
+								<Users className="w-5 h-5" />
+								<h3 className="font-bold text-lg text-slate-800">
+									Vendedor{deal.sellers.length !== 1 && 'es'} ({deal.sellers.length})
+								</h3>
+							</div>
+							<p className="text-xs text-slate-400 mb-4">
+								{deal.sellers.length || 0} Pessoa(s)
+							</p>
+							{deal.sellers.length > 0 ? (
+								deal.sellers.map((seller: any, idx: number) => {
+									// Garantir que temos strings válidas
+									const sellerName = typeof seller.name === 'string' ? seller.name : 'Sem nome';
+									const sellerEmail = typeof seller.email === 'string' ? seller.email : '';
+									const sellerPhone = typeof seller.phone === 'string' ? seller.phone : '';
+									const sellerCpf = typeof seller.cpf === 'string' ? seller.cpf : '';
+									const sellerDataSource = typeof seller.dataSource === 'string' ? seller.dataSource : '';
+
+									return (
+										<div key={idx} className="bg-slate-50 p-3 rounded-lg flex items-start gap-3 mb-2">
+											<div className="bg-white p-2 rounded-full border border-slate-200">
+												<User className="w-4 h-4 text-slate-400" />
+											</div>
+											<div className="flex-1">
+												<p className="font-medium text-slate-800">{sellerName}</p>
+												{sellerCpf && (
+													<p className="text-xs text-slate-600 font-mono">CPF: {formatCPF(sellerCpf)}</p>
+												)}
+												{sellerEmail && <p className="text-xs text-slate-500">{sellerEmail}</p>}
+												{sellerPhone && <p className="text-xs text-slate-500">{sellerPhone}</p>}
+												{sellerDataSource && (
+													<p className="text-xs text-blue-600 mt-1">
+														📄 Extraído de: {sellerDataSource}
+													</p>
+												)}
+											</div>
 										</div>
-										<div className="flex-1">
-											<p className="font-medium text-slate-800">{sellerName}</p>
-											{sellerCpf && (
-												<p className="text-xs text-slate-600 font-mono">CPF: {formatCPF(sellerCpf)}</p>
-											)}
-											{sellerEmail && <p className="text-xs text-slate-500">{sellerEmail}</p>}
-											{sellerPhone && <p className="text-xs text-slate-500">{sellerPhone}</p>}
-											{sellerDataSource && (
-												<p className="text-xs text-blue-600 mt-1">
-													📄 Extraído de: {sellerDataSource}
-												</p>
-											)}
-										</div>
-									</div>
-								);
-							})
-						) : (
-							<p className="text-sm text-slate-400 italic">Nenhum vendedor cadastrado</p>
-						)}
+									);
+								})
+							) : (
+								<p className="text-sm text-slate-400 italic">Nenhum vendedor cadastrado</p>
+							)}
+						</div>
 					</div>
 				</div>
-			)}
 
-			{activeTab === 'docs' && (
-				<div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+				{/* Aba Documentos */}
+				<input
+					type="radio"
+					name="deal_details_tabs"
+					className={`tab px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'docs' ? 'bg-white text-slate-800' : 'text-slate-500 hover:bg-white/90 hover:text-slate-400'}`}
+					aria-label="Documentos"
+					onChange={() => setActiveTab('docs')}
+				/>
+				<div className="tab-content bg-white rounded-b-xl border border-slate-200 shadow-sm p-0">
 					<div className="p-6 border-b border-slate-100">
 						<h3 className="font-bold text-lg text-slate-800">Documentos do Contrato</h3>
 						<p className="text-sm text-slate-500">
@@ -352,7 +358,7 @@ export const DealDetailsView: React.FC = () => {
 					{deal.docs.length > 0 ? (
 						<div className="divide-y divide-slate-100">
 							{deal.docs.map((doc: any, idx: number) => (
-								<div key={idx} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
+								<div key={idx} className="p-4 flex flex-col sm:flex-row sm:items-center rounded-lg justify-between gap-4 hover:bg-slate-50 transition-colors">
 									<div className="flex items-center gap-3">
 										<div className="bg-blue-50 p-2 rounded text-primary">
 											<FileText className="w-4 h-4" />
@@ -406,27 +412,35 @@ export const DealDetailsView: React.FC = () => {
 						</div>
 					)}
 				</div>
-			)}
 
-			{activeTab === 'notes' && (
-				<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-					<h3 className="font-bold text-lg text-slate-800 mb-1">Observações</h3>
-					<p className="text-sm text-slate-500 mb-4">Notas e observações sobre o contrato</p>
-
-					<textarea
-						className="w-full h-32 border border-slate-600 rounded-lg p-3 bg-white text-slate-600 placeholder-slate-400 focus:ring-2 focus:ring-primary focus:border-transparent outline-none resize-none"
-						placeholder="Adicione observações sobre este contrato..."
-						value={notes}
-						onChange={(e) => setNotes(e.target.value)}
-					/>
-
-					<div className="flex justify-end mt-4">
-						<Button onClick={() => alert("Observações salvas!")}>
-							Salvar Observações
-						</Button>
+				{/* Aba Signatários */}
+				<input
+					type="radio"
+					name="deal_details_tabs"
+					className={`tab px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'signers' ? 'bg-white text-slate-800' : 'text-slate-500 hover:bg-white/90 hover:text-slate-400'}`}
+					aria-label="Signatários"
+					onChange={() => setActiveTab('signers')}
+				/>
+				<div className="tab-content bg-white rounded-b-xl border border-slate-200 shadow-sm p-6">
+					<h3 className="font-bold text-lg text-slate-800 mb-1">Signatários</h3>
+					<p className="text-sm text-slate-500 mb-4">Signatários do contrato</p>
+					<div className="space-y-4">
+						{dealData.signers?.map((signer: Signatory) => (
+							<SignerCard
+								key={signer.id} signer={signer}
+								canRemove={dealData.status === 'DRAFT'}
+								onRemove={removeSigner}
+								onClick={() => {
+									if (dealData.status === 'DRAFT') {
+										navigate(`/deals/${dealId}/edit?step=5`);
+									}
+								}}
+								isLoading={removeSignerLoading}
+							/>
+						))}
 					</div>
 				</div>
-			)}
+			</div>
 
 			{/* Modal de confirmação para envio */}
 			<ConfirmModal

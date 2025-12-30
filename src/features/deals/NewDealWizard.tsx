@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, CheckCircle2, Send, Loader2, Save } from 'lucide-react';
 import { Button } from '@/components/Button';
@@ -50,8 +50,12 @@ const generateOcrDataFromFiles = (files: UploadedFile[]): OcrDataByPerson[] => {
 export const NewDealWizard: React.FC = () => {
   const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const editDealId = id; // Se id existe na URL, está em modo de edição
-  const [step, setStep] = useState(1);
+
+  // Inicializar step dos query params se existir
+  const initialStep = parseInt(searchParams.get('step') || '1', 10);
+  const [step, setStep] = useState(initialStep > 0 && initialStep <= 5 ? initialStep : 1);
   const [direction, setDirection] = useState(1);
   const [submissionStatus, setSubmissionStatus] = useState<'editing' | 'sending' | 'success'>('editing');
   const [dealId, setDealId] = useState<string | null>(editDealId || null);
