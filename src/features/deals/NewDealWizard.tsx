@@ -79,7 +79,6 @@ export const NewDealWizard: React.FC = () => {
     name: '',
     docTemplateId: '',
     expiration_date: undefined,
-    contract_end: undefined,
     useFgts: false,
     bankFinancing: false,
     consortiumLetter: false,
@@ -102,7 +101,6 @@ export const NewDealWizard: React.FC = () => {
           name: existingDeal.name || '',
           docTemplateId: existingDeal.docTemplateId || prev.docTemplateId,
           expiration_date: existingDeal.expirationDate ?? undefined,
-          contract_end: existingDeal.contractEnd ?? undefined,
           ...(existingDeal.metadata || {}),
         }));
       }
@@ -205,7 +203,6 @@ export const NewDealWizard: React.FC = () => {
           name: configData.name,
           docTemplateId: configData.docTemplateId,
           expirationDate: configData.expiration_date,
-          contractEnd: configData.contract_end,
           metadata: {
             useFgts: configData.useFgts,
             bankFinancing: configData.bankFinancing,
@@ -223,7 +220,6 @@ export const NewDealWizard: React.FC = () => {
       setConfigData(prev => ({
         ...prev,
         expiration_date: updatedDeal.expirationDate ?? prev.expiration_date,
-        contract_end: updatedDeal.contractEnd ?? prev.contract_end,
       }));
 
       setSaveSuccess(true);
@@ -320,8 +316,7 @@ export const NewDealWizard: React.FC = () => {
           configData.name.trim().length > 0 &&
           !!configData.docTemplateId &&
           configData.docTemplateId.trim().length > 0 &&
-          !!configData.expiration_date &&
-          !!configData.contract_end
+          !!configData.expiration_date
         ) &&
           configData.sellers.length > 0 &&
           configData.buyers.length > 0;
@@ -351,7 +346,6 @@ export const NewDealWizard: React.FC = () => {
           docTemplateId: configData.docTemplateId,
           signers: [],
           expirationDate: configData.expiration_date,
-          contractEnd: configData.contract_end,
           metadata: {
             useFgts: configData.useFgts,
             bankFinancing: configData.bankFinancing,
@@ -389,7 +383,6 @@ export const NewDealWizard: React.FC = () => {
             name: configData.name,
             docTemplateId: configData.docTemplateId,
             expirationDate: configData.expiration_date,
-            contractEnd: configData.contract_end,
             metadata: {
               useFgts: configData.useFgts,
               bankFinancing: configData.bankFinancing,
@@ -449,6 +442,64 @@ export const NewDealWizard: React.FC = () => {
     setStep(s => Math.max(s - 1, 1));
   }
 
+  /**
+   * Extrai e formata a mensagem de erro da API
+   */
+  const extractErrorMessage = (error: any): string => {
+    // Verificar se há resposta da API
+    if (error?.response?.data) {
+      const data = error.response.data;
+      const status = error.response.status;
+
+      // Erro 422 - Validação/Dados incompletos
+      if (status === 422) {
+        if (data.message) {
+          if (Array.isArray(data.message)) {
+            return `Dados incompletos: ${data.message.join(', ')}`;
+          }
+          return `Dados incompletos: ${data.message}`;
+        }
+        if (data.erro) {
+          return `Dados incompletos: ${data.erro}`;
+        }
+        return 'Dados incompletos ou inválidos. Verifique se o preview foi gerado e se todos os dados estão corretos.';
+      }
+      
+      // Erro 400 - Bad Request
+      if (status === 400) {
+        return data.message || data.erro || 'Requisição inválida. Verifique os dados fornecidos.';
+      }
+      
+      // Erro 404 - Não encontrado
+      if (status === 404) {
+        return 'Contrato não encontrado. Verifique se ele ainda existe.';
+      }
+      
+      // Erro 500 - Erro do servidor
+      if (status >= 500) {
+        return 'Erro no servidor. Tente novamente em alguns instantes.';
+      }
+      
+      // Outros erros
+      if (data.message) {
+        return data.message;
+      }
+      if (data.erro) {
+        return data.erro;
+      }
+    }
+    
+    // Erro de rede ou timeout
+    if (error?.message) {
+      if (error.message.includes('timeout') || error.message.includes('Network Error')) {
+        return 'Erro de conexão. Verifique sua internet e tente novamente.';
+      }
+      return error.message;
+    }
+
+    return 'Erro ao enviar contrato. Tente novamente.';
+  };
+
   const handleFinish = async () => {
     if (!isStepValid(step) || !dealId) return;
 
@@ -480,8 +531,12 @@ export const NewDealWizard: React.FC = () => {
       setSaveSuccess(true);
     } catch (error: any) {
       console.error('❌ Erro ao enviar contrato:', error);
-      setSaveError(error.response?.data?.message || 'Erro ao enviar contrato');
-      setTimeout(() => setSaveError(null), 3000);
+      
+      // Extrair mensagem de erro detalhada
+      const errorMessage = extractErrorMessage(error);
+      setSaveError(errorMessage);
+      
+      setTimeout(() => setSaveError(null), 5000); // Aumentado para 5 segundos para dar tempo de ler
       setSubmissionStatus('editing');
       return;
     }
@@ -509,6 +564,14 @@ export const NewDealWizard: React.FC = () => {
         setDirection(1);
         setStep(targetStep);
       }
+    }
+  }
+
+  const handleGoBack = () => {
+    if (editDealId) {
+      navigate(`/deals/${editDealId}`);
+    } else {
+      navigate('/dashboard');
     }
   }
 
@@ -566,7 +629,7 @@ export const NewDealWizard: React.FC = () => {
       <div className="bg-white border-b border-slate-200 sticky top-16 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button onClick={() => navigate('/dashboard')} className="cursor-pointer p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
+            <button onClick={handleGoBack} className="cursor-pointer p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
               <ArrowLeft className="w-6 h-6" />
             </button>
             <div>

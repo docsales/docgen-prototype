@@ -321,7 +321,9 @@ export const ConfigStep: React.FC<ConfigStepProps> = ({ data, onChange }) => {
 								}}
 							/>
 						</div>
-						<div>
+					</div>
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+						<div className="md:col-span-1">
 							<label className="text-slate-700 font-medium">Modelo de Minuta</label>
 							<select
 								className="select select-bordered w-full"
@@ -353,26 +355,18 @@ export const ConfigStep: React.FC<ConfigStepProps> = ({ data, onChange }) => {
 								</p>
 							)}
 						</div>
-					</div>
 
-					{/* Date Fields */}
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-						<DatePickerField
-							label="Data de Expiração"
-							value={formatDateForInput(data.expiration_date)}
-							onChange={(date) => {
-								onChange({ expiration_date: formatDateForBackend(date) } as any);
-							}}
-							description="Data limite para assinatura do contrato"
-						/>
-						<DatePickerField
-							label="Data de Término do Contrato"
-							value={formatDateForInput(data.contract_end)}
-							onChange={(date) => {
-								onChange({ contract_end: formatDateForBackend(date) } as any);
-							}}
-							description="Data de término da vigência do contrato"
-						/>
+						{/* Date Fields */}
+						<div>
+							<DatePickerField
+								label="Data de Expiração"
+								value={formatDateForInput(data.expiration_date)}
+								onChange={(date) => {
+									onChange({ expiration_date: formatDateForBackend(date) } as any);
+								}}
+								description="Data limite para assinatura do contrato"
+							/>
+						</div>
 					</div>
 				</div>
 			</section>

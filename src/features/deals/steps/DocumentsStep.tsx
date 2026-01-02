@@ -85,11 +85,9 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 		);
 
 		if (processingFiles.length > 0 && !isCheckingStatus) {
-			// Verificar se já passou tempo suficiente desde a última verificação (evitar spam)
 			const timeSinceMount = Date.now() - mountTimestampRef.current;
 
 			if (!hasCheckedOnMountRef.current || timeSinceMount < 2000) {
-				console.log(`🔄 DocumentsStep: ${processingFiles.length} arquivo(s) em processamento - verificando status`);
 				hasCheckedOnMountRef.current = true;
 
 				const timeoutId = setTimeout(() => {
@@ -141,7 +139,6 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 			if (checklists.length > 0) {
 				const consolidated = documentChecklistService.consolidateMultipleChecklists(checklists);
 				setChecklist(consolidated);
-				console.log('✅ Checklist criado com sucesso');
 			} else {
 				setChecklistError('Não foi possível gerar o checklist de documentos. Por favor, tente novamente.');
 			}
@@ -174,12 +171,9 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 
 		// Se é a primeira carga OU se o config mudou, carregar o checklist
 		if (isInitialLoadRef.current || previousConfigRef.current !== configKey) {
-			console.log(isInitialLoadRef.current ? '📋 Carregando checklist inicial...' : '🔄 Config mudou - recriando checklist...');
 			previousConfigRef.current = configKey;
 			isInitialLoadRef.current = false;
 			loadChecklist();
-		} else {
-			console.log('✓ Config não mudou - reutilizando checklist existente');
 		}
 	}, [config, loadChecklist]);
 

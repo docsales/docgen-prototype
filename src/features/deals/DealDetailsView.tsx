@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Circle, FileText, Home, Users, DollarSign, User, XCircle, Edit, Send, Loader2, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/ConfirmModal';
+import { ErrorModal } from '../../components/ErrorModal';
+import { SuccessModal } from './components/SuccessModal';
 import { useDeal, useRemoveSignatoryFromDeal, useSendContract } from './hooks/useDeals';
 import type { DealStatus, Signatory } from '../../types/types';
 import { mergeDealData, formatCPF } from './utils/extractDealData';
@@ -22,9 +24,151 @@ export const DealDetailsView: React.FC = () => {
 	const [activeTab, setActiveTab] = useState<'data' | 'docs' | 'signers'>('data');
 	const [isSending, setIsSending] = useState(false);
 	const [showConfirmModal, setShowConfirmModal] = useState(false);
+	const [showErrorModal, setShowErrorModal] = useState(false);
+	const [showSuccessModal, setShowSuccessModal] = useState(false);
+	const [errorTitle, setErrorTitle] = useState('');
+	const [errorMessage, setErrorMessage] = useState('');
+	const [errorDetails, setErrorDetails] = useState<string[]>([]);
+
+	/**
+	 * Valida se o deal possui todos os dados necessários para envio
+	 */
+	const validateDealForSending = () => {
+		if (!dealData) return [];
+
+		const errors: string[] = [];
+		const deal = mergeDealData(dealData);
+
+		// Verificar se há compradores
+		if (!deal.buyers || deal.buyers.length === 0) {
+			errors.push('Adicione pelo menos um comprador');
+		}
+
+		// Verificar se há vendedores
+		if (!deal.sellers || deal.sellers.length === 0) {
+			errors.push('Adicione pelo menos um vendedor');
+		}
+
+		// Verificar se há informações do imóvel
+		const hasPropertyData = deal.address !== 'Não informado' || 
+		                        deal.matricula !== 'Não informado' ||
+		                        deal.area !== 'Não informado';
+		
+		if (!hasPropertyData) {
+			errors.push('Adicione as informações do imóvel');
+		}
+
+		// Verificar se há preview gerado
+		if (!dealData.consolidated?.draftPreviewUrl && !dealData.consolidated?.generatedDocId) {
+			errors.push('Gere o preview do documento antes de enviar');
+		}
+
+		// Verificar se há signatários
+		if (!dealData.signers || dealData.signers.length === 0) {
+			errors.push('Adicione pelo menos um signatário');
+		}
+
+		return errors;
+	};
 
 	const handleSendContractClick = () => {
+		const validationErrors = validateDealForSending();
+		
+		if (validationErrors.length > 0) {
+			setErrorTitle('Dados Incompletos');
+			setErrorMessage('Não é possível enviar o contrato pois alguns dados obrigatórios estão faltando:');
+			setErrorDetails(validationErrors);
+			setShowErrorModal(true);
+			return;
+		}
+
 		setShowConfirmModal(true);
+	};
+
+	/**
+	 * Extrai e formata a mensagem de erro da API
+	 */
+	const extractErrorMessage = (error: any): { title: string; message: string; details: string[] } => {
+		const details: string[] = [];
+		let title = 'Erro ao Enviar Contrato';
+		let message = 'Ocorreu um erro ao tentar enviar o contrato para assinatura.';
+
+		// Verificar se há resposta da API
+		if (error?.response?.data) {
+			const data = error.response.data;
+			const status = error.response.status;
+
+			// Erro 422 - Validação/Dados incompletos
+			if (status === 422) {
+				title = 'Dados Incompletos ou Inválidos';
+				message = 'O contrato não pode ser enviado devido a problemas nos dados:';
+				
+				// Tentar extrair detalhes do erro
+				if (data.message) {
+					if (Array.isArray(data.message)) {
+						details.push(...data.message);
+					} else {
+						details.push(data.message);
+					}
+				} else if (data.erro) {
+					details.push(data.erro);
+				} else if (data.errors && Array.isArray(data.errors)) {
+					details.push(...data.errors);
+				}
+
+				// Se não conseguimos extrair detalhes, adicionar mensagem genérica
+				if (details.length === 0) {
+					details.push('Verifique se todos os dados do contrato estão completos');
+					details.push('Certifique-se de que o preview foi gerado');
+				}
+			}
+			// Erro 400 - Bad Request
+			else if (status === 400) {
+				title = 'Requisição Inválida';
+				message = 'A requisição não pôde ser processada:';
+				details.push(data.message || data.erro || 'Dados inválidos fornecidos');
+			}
+			// Erro 404 - Não encontrado
+			else if (status === 404) {
+				title = 'Contrato Não Encontrado';
+				message = 'O contrato não foi encontrado no sistema.';
+				details.push('Verifique se o contrato ainda existe');
+				details.push('Tente recarregar a página');
+			}
+			// Erro 500 - Erro do servidor
+			else if (status >= 500) {
+				title = 'Erro do Servidor';
+				message = 'Ocorreu um erro no servidor ao processar sua requisição.';
+				details.push('Tente novamente em alguns instantes');
+				details.push('Se o problema persistir, entre em contato com o suporte');
+			}
+			// Outros erros
+			else {
+				if (data.message) {
+					details.push(data.message);
+				} else if (data.erro) {
+					details.push(data.erro);
+				}
+			}
+		}
+		// Erro de rede ou timeout
+		else if (error?.message) {
+			if (error.message.includes('timeout') || error.message.includes('Network Error')) {
+				title = 'Erro de Conexão';
+				message = 'Não foi possível conectar ao servidor.';
+				details.push('Verifique sua conexão com a internet');
+				details.push('Tente novamente em alguns instantes');
+			} else {
+				details.push(error.message);
+			}
+		}
+
+		// Se não há detalhes, adicionar mensagem genérica
+		if (details.length === 0) {
+			details.push('Erro desconhecido. Tente novamente.');
+		}
+
+		return { title, message, details };
 	};
 
 	const handleConfirmSend = async () => {
@@ -34,20 +178,21 @@ export const DealDetailsView: React.FC = () => {
 		try {
 			await sendContractMutation.mutateAsync({ dealId });
 			setShowConfirmModal(false);
-			// Mostrar feedback de sucesso
+			
+			// Mostrar modal de sucesso
 			setTimeout(() => {
-				alert('✅ Contrato enviado para assinatura com sucesso! Os signatários receberão o documento por e-mail.');
-				// Recarregar página para atualizar o status
-				window.location.reload();
+				setShowSuccessModal(true);
 			}, 300);
 		} catch (error: any) {
 			console.error('Erro ao enviar contrato:', error);
 			setShowConfirmModal(false);
-			setTimeout(() => {
-				alert(
-					`❌ Erro ao enviar contrato: ${error?.response?.data?.message || error?.message || 'Erro desconhecido'}`
-				);
-			}, 300);
+			
+			// Extrair e formatar a mensagem de erro
+			const errorInfo = extractErrorMessage(error);
+			setErrorTitle(errorInfo.title);
+			setErrorMessage(errorInfo.message);
+			setErrorDetails(errorInfo.details);
+			setShowErrorModal(true);
 		} finally {
 			setIsSending(false);
 		}
@@ -177,7 +322,7 @@ export const DealDetailsView: React.FC = () => {
 				<input
 					type="radio"
 					name="deal_details_tabs"
-					className={`tab px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'data' ? 'bg-white text-slate-800' : 'text-slate-500 hover:bg-white/90 hover:text-slate-400'}`}
+					className={`tab px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${activeTab === 'data' ? 'bg-white text-slate-800' : 'text-slate-500 hover:bg-white/90 hover:text-slate-400'}`}
 					aria-label="Dados Tratados"
 					defaultChecked
 					onChange={() => setActiveTab('data')}
@@ -185,7 +330,7 @@ export const DealDetailsView: React.FC = () => {
 				<div className="tab-content">
 					<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 						{/* Imóvel */}
-						<div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+						<div className="bg-white p-6 rounded-md border border-slate-200 shadow-sm">
 							<div className="flex items-center gap-2 mb-4 text-primary">
 								<Home className="w-5 h-5" />
 								<h3 className="font-bold text-lg text-slate-800">Imóvel</h3>
@@ -213,7 +358,7 @@ export const DealDetailsView: React.FC = () => {
 						</div>
 
 						{/* Condições Comerciais */}
-						<div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+						<div className="bg-white p-6 rounded-md border border-slate-200 shadow-sm">
 							<div className="flex items-center gap-2 mb-4 text-primary">
 								<DollarSign className="w-5 h-5" />
 								<h3 className="font-bold text-lg text-slate-800">Condições Comerciais</h3>
@@ -245,7 +390,7 @@ export const DealDetailsView: React.FC = () => {
 						</div>
 
 						{/* Comprador */}
-						<div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+						<div className="bg-white p-6 rounded-md border border-slate-200 shadow-sm">
 							<div className="flex items-center gap-2 mb-2 text-primary">
 								<User className="w-5 h-5" />
 								<h3 className="font-bold text-lg text-slate-800">
@@ -291,7 +436,7 @@ export const DealDetailsView: React.FC = () => {
 						</div>
 
 						{/* Vendedor */}
-						<div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+						<div className="bg-white p-6 rounded-md border border-slate-200 shadow-sm">
 							<div className="flex items-center gap-2 mb-2 text-primary">
 								<Users className="w-5 h-5" />
 								<h3 className="font-bold text-lg text-slate-800">
@@ -342,7 +487,7 @@ export const DealDetailsView: React.FC = () => {
 				<input
 					type="radio"
 					name="deal_details_tabs"
-					className={`tab px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'docs' ? 'bg-white text-slate-800' : 'text-slate-500 hover:bg-white/90 hover:text-slate-400'}`}
+					className={`tab px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${activeTab === 'docs' ? 'bg-white text-slate-800' : 'text-slate-500 hover:bg-white/90 hover:text-slate-400'}`}
 					aria-label="Documentos"
 					onChange={() => setActiveTab('docs')}
 				/>
@@ -417,7 +562,7 @@ export const DealDetailsView: React.FC = () => {
 				<input
 					type="radio"
 					name="deal_details_tabs"
-					className={`tab px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'signers' ? 'bg-white text-slate-800' : 'text-slate-500 hover:bg-white/90 hover:text-slate-400'}`}
+					className={`tab px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${activeTab === 'signers' ? 'bg-white text-slate-800' : 'text-slate-500 hover:bg-white/90 hover:text-slate-400'}`}
 					aria-label="Signatários"
 					onChange={() => setActiveTab('signers')}
 				/>
@@ -443,17 +588,39 @@ export const DealDetailsView: React.FC = () => {
 				</div>
 			</div>
 
-			{/* Modal de confirmação para envio */}
-			<ConfirmModal
-				isOpen={showConfirmModal}
-				onClose={() => setShowConfirmModal(false)}
-				onConfirm={handleConfirmSend}
-				title="Enviar para Assinatura"
-				message="Deseja enviar este contrato para assinatura? Os signatários receberão o documento por e-mail do DocSales e poderão assinar digitalmente."
-				confirmText="Enviar Contrato"
-				cancelText="Cancelar"
-				isLoading={isSending}
-			/>
-		</div>
+		{/* Modal de confirmação para envio */}
+		<ConfirmModal
+			isOpen={showConfirmModal}
+			onClose={() => setShowConfirmModal(false)}
+			onConfirm={handleConfirmSend}
+			title="Enviar para Assinatura"
+			message="Deseja enviar este contrato para assinatura? Os signatários receberão o documento por e-mail do DocSales e poderão assinar digitalmente."
+			confirmText="Enviar Contrato"
+			cancelText="Cancelar"
+			isLoading={isSending}
+		/>
+
+		{/* Modal de erro customizado */}
+		<ErrorModal
+			isOpen={showErrorModal}
+			onClose={() => setShowErrorModal(false)}
+			title={errorTitle}
+			message={errorMessage}
+			details={errorDetails}
+			actionText="Ir para Edição"
+			onAction={() => {
+				setShowErrorModal(false);
+				navigate(`/deals/${dealId}/edit`);
+			}}
+		/>
+
+		{/* Modal de sucesso */}
+		<SuccessModal
+			isOpen={showSuccessModal}
+			onClose={() => setShowSuccessModal(false)}
+			title="Contrato Enviado!"
+			description="O contrato foi enviado para assinatura com sucesso. Os signatários receberão o documento por e-mail do DocSales e poderão assinar digitalmente."
+		/>
+	</div>
 	);
 };

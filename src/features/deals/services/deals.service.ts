@@ -6,7 +6,6 @@ export interface CreateDealPayload {
   name?: string;
   docTemplateId?: string;
   expirationDate?: string; // YYYY-MM-DD format
-  contractEnd?: string; // YYYY-MM-DD format
   signers?: Array<{
     name: string;
     email: string;
