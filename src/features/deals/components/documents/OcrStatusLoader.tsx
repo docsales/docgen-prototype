@@ -10,7 +10,6 @@ interface OcrStatusLoaderProps {
   status: OcrStatus;
   fileName: string;
   error?: string;
-  progress?: number;
   processingTime?: number;
 }
 
@@ -25,7 +24,6 @@ export const OcrStatusLoader: React.FC<OcrStatusLoaderProps> = ({
   status,
   fileName,
   error,
-  progress = 0,
   processingTime,
 }) => {
   const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
@@ -87,28 +85,16 @@ export const OcrStatusLoader: React.FC<OcrStatusLoaderProps> = ({
   const isAnimating = status === 'uploading' || status === 'processing';
 
   return (
-    <div 
+    <div
       className={`
         relative overflow-hidden rounded-lg border-2 p-4 transition-all duration-300
         ${config.borderColor} ${config.bgColor}
       `}
     >
-      {/* Barra de progresso */}
-      {(status === 'uploading' || status === 'processing') && (
-        <div className="absolute top-0 left-0 right-0 h-1 bg-slate-200">
-          <div 
-            className={`h-full transition-all duration-300 ${
-              status === 'uploading' ? 'bg-blue-500' : 'bg-purple-500'
-            }`}
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      )}
-
       <div className="flex items-start gap-3">
         {/* Ícone com animação */}
         <div className={`flex-shrink-0 ${config.color}`}>
-          <Icon 
+          <Icon
             className={`w-5 h-5 ${isAnimating ? 'animate-spin' : ''}`}
           />
         </div>
@@ -135,23 +121,6 @@ export const OcrStatusLoader: React.FC<OcrStatusLoaderProps> = ({
             <p className="text-xs text-red-600 mt-2 line-clamp-2">
               {error}
             </p>
-          )}
-
-          {/* Indicador de progresso textual */}
-          {(status === 'uploading' || status === 'processing') && (
-            <div className="flex items-center gap-2 mt-2">
-              <div className="flex-1 bg-slate-200 rounded-full h-1.5">
-                <div 
-                  className={`h-full rounded-full transition-all duration-300 ${
-                    status === 'uploading' ? 'bg-blue-500' : 'bg-purple-500'
-                  }`}
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <span className="text-xs text-slate-500 font-medium">
-                {progress}%
-              </span>
-            </div>
           )}
 
           {/* Mensagem de sucesso */}
@@ -199,4 +168,3 @@ export const OcrStatusBadge: React.FC<{
     </div>
   );
 };
-

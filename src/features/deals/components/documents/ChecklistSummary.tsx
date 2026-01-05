@@ -63,6 +63,23 @@ export const ChecklistSummary: React.FC<ChecklistSummaryProps> = ({
     });
   };
 
+  const translateComplexity = (complexity: string) => {
+    switch (complexity) {
+      case 'BAIXA':
+        return 'Baixa';
+      case 'MEDIA':
+        return 'Média';
+      case 'MEDIA_ALTA':
+        return 'Média Alta';
+      case 'ALTA':
+        return 'Alta';
+      case 'MUITO_ALTA':
+        return 'Muito Alta';
+      default:
+        return complexity;
+    }
+  };
+
   return (
     <div className="bg-gradient-to-br from-primary/5 to-accent/5 rounded-2xl border border-primary/20 p-6 mb-6">
       <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -95,8 +112,8 @@ export const ChecklistSummary: React.FC<ChecklistSummaryProps> = ({
             </div>
             <div>
               <p className="text-sm text-slate-500">Complexidade</p>
-              <p className={`text-lg font-bold px-2 py-1 rounded-md inline-block ${getComplexityColor(checklist.resumo.complexidadeMaxima)}`}>
-                {checklist.resumo.complexidadeMaxima}
+              <p className={`text-lg font-bold px-2 py-1 rounded-md uppercase inline-block ${getComplexityColor(checklist.resumo.complexidadeMaxima)}`}>
+                {translateComplexity(checklist.resumo.complexidadeMaxima)}
               </p>
             </div>
           </div>

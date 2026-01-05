@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/Button';
-import { AlertTriangle, RefreshCcw, RotateCw } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, RefreshCcw, RotateCw } from 'lucide-react';
 import type { UploadedFile, DealConfig } from '@/types/types';
 import { BuyerDocumentsTab } from '../components/documents/BuyerDocumentsTab';
 import { SellerDocumentsTab } from '../components/documents/SellerDocumentsTab';
@@ -28,13 +28,13 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 }) => {
 	const removeDocumentFromDealMutation = useRemoveDocumentFromDeal();
 
-	const [activeTab, setActiveTab] = useState<'buyers' | 'sellers' | 'property'>('buyers');
+	const [activeTab, setActiveTab] = useState<'buyers' | 'sellers' | 'property'>('sellers');
 	const [checklist, setChecklist] = useState<ConsolidatedChecklist | null>(null);
 	const [isLoadingChecklist, setIsLoadingChecklist] = useState(false);
 	const [checklistError, setChecklistError] = useState<string | null>(null);
 	const hasCheckedOnMountRef = useRef(false);
 	const mountTimestampRef = useRef<number>(Date.now());
-	
+
 	// Armazenar o config anterior para comparação
 	const previousConfigRef = useRef<string | null>(null);
 	const isInitialLoadRef = useRef(true);
@@ -74,7 +74,7 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 		hasCheckedOnMountRef.current = false;
 		mountTimestampRef.current = Date.now();
 
-		return () => {};
+		return () => { };
 	}, []);
 
 	// Verificar status de arquivos em processamento ao montar ou quando arquivos mudarem
@@ -154,15 +154,15 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 	useEffect(() => {
 		// Criar uma representação em string das configurações relevantes para comparação
 		const configKey = JSON.stringify({
-			sellers: config.sellers.map(s => ({
-				personType: s.personType,
-				maritalState: s.maritalState,
-				propertyRegime: s.propertyRegime
-			})),
 			buyers: config.buyers.map(b => ({
 				personType: b.personType,
 				maritalState: b.maritalState,
 				propertyRegime: b.propertyRegime
+			})),
+			sellers: config.sellers.map(s => ({
+				personType: s.personType,
+				maritalState: s.maritalState,
+				propertyRegime: s.propertyRegime
 			})),
 			bankFinancing: config.bankFinancing,
 			propertyState: config.propertyState,
@@ -213,11 +213,11 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 					<h3 className="text-xl font-bold text-slate-800">Erro ao Carregar Checklist</h3>
 					<p className="text-slate-500">{checklistError}</p>
 					<div className="flex justify-center">
-						<Button 
+						<Button
 							onClick={() => {
 								console.log('🔄 Tentando recarregar checklist...');
 								loadChecklist();
-							}} 
+							}}
 							className="btn-md"
 							disabled={isLoadingChecklist}
 						>
@@ -259,7 +259,7 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 							<button
 								onClick={handleManualRefresh}
 								disabled={isCheckingStatus}
-								className="cursor-pointer flex items-center gap-2 px-4 py-2 bg-white hover:bg-indigo-50 rounded-xl border border-indigo-300 shadow-sm transition-all hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+								className="cursor-pointer flex items-center gap-2 px-4 py-2 bg-white hover:bg-indigo-50 rounded-md border border-indigo-300 shadow-sm transition-all hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
 								title="Atualizar status"
 							>
 								<RotateCw className={`w-4 h-4 text-indigo-600 ${isCheckingStatus ? 'animate-spin' : ''}`} />
@@ -316,18 +316,8 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 					<div className="flex">
 						<button
 							type="button"
-							onClick={() => setActiveTab('buyers')}
-							className={`flex-1 px-6 py-3 font-medium text-sm transition-all ${activeTab === 'buyers'
-								? 'text-primary border-b-2 border-primary bg-white'
-								: 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-								}`}
-						>
-							Compradores
-						</button>
-						<button
-							type="button"
 							onClick={() => setActiveTab('sellers')}
-							className={`flex-1 px-6 py-3 font-medium text-sm transition-all ${activeTab === 'sellers'
+							className={`cursor-pointer flex-1 px-6 py-3 font-medium text-sm transition-all ${activeTab === 'sellers'
 								? 'text-primary border-b-2 border-primary bg-white'
 								: 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
 								}`}
@@ -336,8 +326,18 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 						</button>
 						<button
 							type="button"
+							onClick={() => setActiveTab('buyers')}
+							className={`cursor-pointer flex-1 px-6 py-3 font-medium text-sm transition-all ${activeTab === 'buyers'
+								? 'text-primary border-b-2 border-primary bg-white'
+								: 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+								}`}
+						>
+							Compradores
+						</button>
+						<button
+							type="button"
 							onClick={() => setActiveTab('property')}
-							className={`flex-1 px-6 py-3 font-medium text-sm transition-all ${activeTab === 'property'
+							className={`cursor-pointer flex-1 px-6 py-3 font-medium text-sm transition-all ${activeTab === 'property'
 								? 'text-primary border-b-2 border-primary bg-white'
 								: 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
 								}`}
@@ -380,6 +380,26 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 							checklist={checklist}
 						/>
 					)}
+
+					{/* Buttons Navigation */}
+					<div className="flex justify-between items-center mt-6">
+						{activeTab !== 'sellers' ? (
+							<Button variant="secondary" onClick={() => setActiveTab(activeTab === 'buyers' ? 'sellers' : 'buyers')}>
+								<div className="flex items-center gap-2">
+									<ArrowLeft className="w-4 h-4" />
+									{activeTab === 'buyers' ? 'Vendedores' : 'Compradores'}
+								</div>
+							</Button>
+						) : <div className="w-full" />}
+						{activeTab !== 'property' && (
+							<Button variant="secondary" onClick={() => setActiveTab(activeTab === 'buyers' ? 'property' : 'buyers')}>
+								<div className="flex items-center gap-2">
+									{activeTab === 'buyers' ? 'Imóvel' : 'Compradores'}
+									<ArrowRight className="w-4 h-4" />
+								</div>
+							</Button>
+						)}
+					</div>
 				</div>
 			</div>
 		</div>

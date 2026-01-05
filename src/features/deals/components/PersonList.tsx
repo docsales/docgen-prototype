@@ -18,7 +18,70 @@ export const PersonList: React.FC<PersonListProps> = ({
 }) => {
   const handlePersonChange = (index: number, updatedPerson: Person) => {
     const newPeople = [...people];
+    const oldPerson = newPeople[index];
     newPeople[index] = updatedPerson;
+    
+    // Verifica se o estado civil mudou para casado ou união estável
+    const oldMaritalState = oldPerson.maritalState;
+    const newMaritalState = updatedPerson.maritalState;
+    
+    // Se mudou para casado ou união estável e não era antes
+    if (
+      updatedPerson.personType === 'PF' &&
+      (newMaritalState === 'casado' || newMaritalState === 'uniao_estavel') &&
+      oldMaritalState !== 'casado' &&
+      oldMaritalState !== 'uniao_estavel'
+    ) {
+      // Verifica se já existe um cônjuge para esta pessoa
+      const hasSpouse = newPeople.some((p, idx) => 
+        idx !== index && p.isSpouse && !updatedPerson.isSpouse
+      );
+      
+      // Se não existe cônjuge, adiciona automaticamente
+      if (!hasSpouse && !updatedPerson.isSpouse) {
+        const spouse = createDefaultPerson();
+        spouse.isSpouse = true;
+        spouse.maritalState = newMaritalState;
+        spouse.propertyRegime = updatedPerson.propertyRegime || 'comunhao_parcial';
+        newPeople.splice(index + 1, 0, spouse);
+      }
+    }
+    
+    // Se mudou de casado/união estável para outro estado e não é cônjuge
+    if (
+      updatedPerson.personType === 'PF' &&
+      (oldMaritalState === 'casado' || oldMaritalState === 'uniao_estavel') &&
+      newMaritalState !== 'casado' &&
+      newMaritalState !== 'uniao_estavel' &&
+      !updatedPerson.isSpouse
+    ) {
+      // Remove o cônjuge associado (próxima pessoa se for cônjuge)
+      const spouseIndex = index + 1;
+      if (spouseIndex < newPeople.length && newPeople[spouseIndex].isSpouse) {
+        newPeople.splice(spouseIndex, 1);
+      }
+    }
+    
+    // Sincroniza o regime de bens entre pessoa e cônjuge
+    if (
+      updatedPerson.personType === 'PF' &&
+      (newMaritalState === 'casado' || newMaritalState === 'uniao_estavel') &&
+      updatedPerson.propertyRegime !== oldPerson.propertyRegime
+    ) {
+      // Encontra o cônjuge
+      const spouseIndex = updatedPerson.isSpouse 
+        ? newPeople.findIndex((p, idx) => idx !== index && !p.isSpouse && (p.maritalState === 'casado' || p.maritalState === 'uniao_estavel'))
+        : newPeople.findIndex((p, idx) => idx !== index && p.isSpouse);
+      
+      // Atualiza o regime de bens do cônjuge se encontrado
+      if (spouseIndex !== -1) {
+        newPeople[spouseIndex] = {
+          ...newPeople[spouseIndex],
+          propertyRegime: updatedPerson.propertyRegime,
+        };
+      }
+    }
+    
     onChange(newPeople);
   };
 
@@ -35,6 +98,25 @@ export const PersonList: React.FC<PersonListProps> = ({
   // Check if there are multiple people to show spouse option
   const showSpouseOption = people.length > 1;
 
+  // Verifica se todas as pessoas casadas/união estável já têm cônjuge
+  const hasMarriedWithoutSpouse = people.some((person, idx) => {
+    if (person.personType === 'PF' && 
+        !person.isSpouse && 
+        (person.maritalState === 'casado' || person.maritalState === 'uniao_estavel')) {
+      // Verifica se existe um cônjuge logo após ou em qualquer lugar da lista
+      const hasCorrespondingSpouse = people.some((p, pIdx) => 
+        pIdx !== idx && p.isSpouse && p.personType === 'PF'
+      );
+      return !hasCorrespondingSpouse;
+    }
+    return false;
+  });
+
+  // Mostra o botão adicionar apenas se:
+  // 1. Não existe nenhum cônjuge na lista, OU
+  // 2. Existe alguém casado/união estável sem cônjuge
+  const showAddButton = !people.some(p => p.isSpouse) || hasMarriedWithoutSpouse;
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -46,14 +128,16 @@ export const PersonList: React.FC<PersonListProps> = ({
             {people.length}
           </div>
         </div>
-        <Button
-          onClick={handleAddPerson}
-          className="flex items-center gap-2 btn-md"
-          variant='ghost'
-        >
-          <Plus className="w-4 h-4" />
-          Adicionar
-        </Button>
+        {showAddButton && (
+          <Button
+            onClick={handleAddPerson}
+            className="flex items-center gap-2 btn-md"
+            variant='ghost'
+          >
+            <Plus className="w-4 h-4" />
+            Adicionar
+          </Button>
+        )}
       </div>
 
       {/* People List */}

@@ -155,7 +155,7 @@ export const SellerDocumentsTab: React.FC<SellerDocumentsTabProps> = ({
 				}).length;
 
 				return (
-					<div key={seller.id} className="space-y-4 pb-6 border-b-2 border-slate-100 last:border-b-0">
+					<div key={seller.id} className="space-y-4 border-b-2 border-slate-100 last:border-b-0">
 						{/* Header do vendedor */}
 						<div className="bg-gradient-to-r from-blue-50 to-blue-100 px-4 py-3 rounded-lg border border-blue-200 shadow-sm">
 							<div className="flex items-center justify-between">

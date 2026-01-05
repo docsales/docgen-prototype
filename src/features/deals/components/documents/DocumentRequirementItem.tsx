@@ -9,13 +9,13 @@ interface DocumentRequirementItemProps {
 	documentName: string;
 	description?: string;
 	uploadedFiles: UploadedFile[];
-	allFiles?: UploadedFile[]; // Todos os arquivos disponíveis para reutilização
+	allFiles?: UploadedFile[];
 	onFileUpload: (files: File[], documentType: string, personId?: string) => void;
 	onRemoveFile?: (fileId: string) => void;
 	onLinkExistingFile?: (fileId: string, documentType: string) => void;
 	personId?: string;
 	maxFiles?: number;
-	linkingFileId?: string | null; // ID do arquivo que está sendo vinculado
+	linkingFileId?: string | null;
 }
 
 // Helper function to check if a file satisfies a document type
@@ -43,10 +43,8 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 	const [showLinkMenu, setShowLinkMenu] = useState(false);
 
 	const relatedFiles = uploadedFiles.filter(f => {
-		// Check if file satisfies this document type (either primary type or in types array)
 		if (!fileSatisfiesType(f, documentId)) return false;
 
-		// Check if personId matches
 		if (personId === undefined && f.personId === undefined) return true;
 
 		return f.personId === personId;
@@ -61,7 +59,6 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 
 		if (file.ocrStatus !== OcrStatus.COMPLETED || !file.validated) return false;
 
-		// Deve ter documentId do banco de dados para poder vincular
 		if (!file.documentId) return false;
 
 		return true;
@@ -71,6 +68,7 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 	const hasError = relatedFiles.some(f => f.validated === false);
 	const isPending = relatedFiles.length > 0 && relatedFiles.some(f => f.validated === undefined);
 	const canAddMore = relatedFiles.length < maxFiles;
+	const maxFilesLabel = maxFiles === 1 ? '1 arquivo' : `${maxFiles} arquivos`;
 
 	const getStatusIcon = () => {
 		if (isValidated) {
@@ -95,7 +93,11 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 		if (isPending) {
 			return <span className="text-yellow-600 font-semibold text-sm">Validando...</span>;
 		}
-		return <span className="text-slate-400 font-semibold text-sm">Clique ou arraste para enviar</span>;
+		return (
+			<span className="text-slate-400 font-semibold text-sm">
+				Clique ou arraste para enviar (até {maxFilesLabel})
+			</span>
+		);
 	};
 
 	const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -144,9 +146,6 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 		e.preventDefault();
 		e.stopPropagation();
 
-		// Verificar se ainda está dentro da área de drop
-		// Se o relatedTarget (para onde o mouse foi) ainda está dentro do currentTarget,
-		// significa que só mudou de elemento filho, não saiu da área
 		if (e.currentTarget.contains(e.relatedTarget as Node)) {
 			return;
 		}
@@ -280,7 +279,7 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 														e.stopPropagation();
 														onRemoveFile(file.id);
 													}}
-													className="p-1 hover:bg-red-100 rounded text-red-500 hover:text-red-700 transition-colors flex-shrink-0"
+													className="cursor-pointer p-1 hover:bg-red-100 rounded text-red-500 hover:text-red-700 transition-colors flex-shrink-0"
 													title="Remover arquivo"
 												>
 													<X className="w-4 h-4" />
@@ -295,11 +294,9 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 
 					<div className="flex items-center gap-2 flex-wrap">
 						{getStatusText()}
-						{relatedFiles.length > 0 && canAddMore && (
-							<span className="text-xs text-slate-400">
-								({relatedFiles.length}/{maxFiles})
-							</span>
-						)}
+						<span className="text-xs text-slate-400">
+							({relatedFiles.length}/{maxFiles})
+						</span>
 
 						{/* Botão para reutilizar documento existente */}
 						{onLinkExistingFile && reusableFiles.length > 0 && canAddMore && relatedFiles.length === 0 && (
@@ -383,7 +380,7 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 					{/* Mensagem quando limite atingido */}
 					{!canAddMore && (
 						<p className="text-xs text-slate-500 mt-2">
-							Limite de {maxFiles} arquivo(s) atingido
+							Limite de {maxFiles} {maxFiles === 1 ? 'arquivo' : 'arquivos'} atingido
 						</p>
 					)}
 				</div>

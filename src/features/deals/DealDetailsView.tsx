@@ -50,10 +50,10 @@ export const DealDetailsView: React.FC = () => {
 		}
 
 		// Verificar se há informações do imóvel
-		const hasPropertyData = deal.address !== 'Não informado' || 
-		                        deal.matricula !== 'Não informado' ||
-		                        deal.area !== 'Não informado';
-		
+		const hasPropertyData = deal.address !== 'Não informado' ||
+			deal.matricula !== 'Não informado' ||
+			deal.area !== 'Não informado';
+
 		if (!hasPropertyData) {
 			errors.push('Adicione as informações do imóvel');
 		}
@@ -73,7 +73,7 @@ export const DealDetailsView: React.FC = () => {
 
 	const handleSendContractClick = () => {
 		const validationErrors = validateDealForSending();
-		
+
 		if (validationErrors.length > 0) {
 			setErrorTitle('Dados Incompletos');
 			setErrorMessage('Não é possível enviar o contrato pois alguns dados obrigatórios estão faltando:');
@@ -102,7 +102,7 @@ export const DealDetailsView: React.FC = () => {
 			if (status === 422) {
 				title = 'Dados Incompletos ou Inválidos';
 				message = 'O contrato não pode ser enviado devido a problemas nos dados:';
-				
+
 				// Tentar extrair detalhes do erro
 				if (data.message) {
 					if (Array.isArray(data.message)) {
@@ -178,7 +178,7 @@ export const DealDetailsView: React.FC = () => {
 		try {
 			await sendContractMutation.mutateAsync({ dealId });
 			setShowConfirmModal(false);
-			
+
 			// Mostrar modal de sucesso
 			setTimeout(() => {
 				setShowSuccessModal(true);
@@ -186,7 +186,7 @@ export const DealDetailsView: React.FC = () => {
 		} catch (error: any) {
 			console.error('Erro ao enviar contrato:', error);
 			setShowConfirmModal(false);
-			
+
 			// Extrair e formatar a mensagem de erro
 			const errorInfo = extractErrorMessage(error);
 			setErrorTitle(errorInfo.title);
@@ -280,7 +280,7 @@ export const DealDetailsView: React.FC = () => {
 							<Button
 								variant="secondary"
 								className="h-10 px-4 text-sm whitespace-nowrap"
-								onClick={() => navigate(`/deals/${dealId}/edit`)}
+								onClick={() => navigate(`/deals/${dealId}/edit?step=1`)}
 								disabled={isSending}
 							>
 								<Edit className="w-4 h-4 mr-2" /> Editar
@@ -568,59 +568,72 @@ export const DealDetailsView: React.FC = () => {
 				/>
 				<div className="tab-content bg-white rounded-b-xl border border-slate-200 shadow-sm p-6">
 					<h3 className="font-bold text-lg text-slate-800 mb-1">Signatários</h3>
-					<p className="text-sm text-slate-500 mb-4">Signatários do contrato</p>
-					<div className="space-y-4">
-						{dealData.signers?.map((signer: Signatory) => (
-							<SignerCard
-								key={signer.id} signer={signer}
-								dealStatus={dealData.status}
-								canRemove={dealData.status === 'DRAFT'}
-								onRemove={removeSigner}
-								onClick={() => {
-									if (dealData.status === 'DRAFT') {
-										navigate(`/deals/${dealId}/edit?step=5`);
-									}
-								}}
-								isLoading={removeSignerLoading}
-							/>
-						))}
-					</div>
+					<p className="text-sm text-slate-500 mb-4">
+						{dealData.signers?.length || 0} {dealData.signers?.length !== 1 ? 'Signatários' : 'Signatário'} adicionado(s) para o contrato
+					</p>
+
+					{dealData.signers?.length === 0 ? (
+						<div className="p-8 text-center">
+							<Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+							<p className="text-slate-500">Nenhum signatário adicionado</p>
+							<p className="text-xs text-slate-400 mt-1">
+								Clique em "Editar" para adicionar signatários
+							</p>
+						</div>
+					) : (
+						<div className="space-y-4">
+							{dealData.signers?.map((signer: Signatory) => (
+								<SignerCard
+									key={signer.id} signer={signer}
+									dealStatus={dealData.status}
+									canRemove={dealData.status === 'DRAFT'}
+									onRemove={removeSigner}
+									onClick={() => {
+										if (dealData.status === 'DRAFT') {
+											navigate(`/deals/${dealId}/edit?step=5`);
+										}
+									}}
+									isLoading={removeSignerLoading}
+								/>
+							))}
+						</div>
+					)}
 				</div>
 			</div>
 
-		{/* Modal de confirmação para envio */}
-		<ConfirmModal
-			isOpen={showConfirmModal}
-			onClose={() => setShowConfirmModal(false)}
-			onConfirm={handleConfirmSend}
-			title="Enviar para Assinatura"
-			message="Deseja enviar este contrato para assinatura? Os signatários receberão o documento por e-mail do DocSales e poderão assinar digitalmente."
-			confirmText="Enviar Contrato"
-			cancelText="Cancelar"
-			isLoading={isSending}
-		/>
+			{/* Modal de confirmação para envio */}
+			<ConfirmModal
+				isOpen={showConfirmModal}
+				onClose={() => setShowConfirmModal(false)}
+				onConfirm={handleConfirmSend}
+				title="Enviar para Assinatura"
+				message="Deseja enviar este contrato para assinatura? Os signatários receberão o documento por e-mail do DocSales e poderão assinar digitalmente."
+				confirmText="Enviar Contrato"
+				cancelText="Cancelar"
+				isLoading={isSending}
+			/>
 
-		{/* Modal de erro customizado */}
-		<ErrorModal
-			isOpen={showErrorModal}
-			onClose={() => setShowErrorModal(false)}
-			title={errorTitle}
-			message={errorMessage}
-			details={errorDetails}
-			actionText="Ir para Edição"
-			onAction={() => {
-				setShowErrorModal(false);
-				navigate(`/deals/${dealId}/edit`);
-			}}
-		/>
+			{/* Modal de erro customizado */}
+			<ErrorModal
+				isOpen={showErrorModal}
+				onClose={() => setShowErrorModal(false)}
+				title={errorTitle}
+				message={errorMessage}
+				details={errorDetails}
+				actionText="Ir para Edição"
+				onAction={() => {
+					setShowErrorModal(false);
+					navigate(`/deals/${dealId}/edit`);
+				}}
+			/>
 
-		{/* Modal de sucesso */}
-		<SuccessModal
-			isOpen={showSuccessModal}
-			onClose={() => setShowSuccessModal(false)}
-			title="Contrato Enviado!"
-			description="O contrato foi enviado para assinatura com sucesso. Os signatários receberão o documento por e-mail do DocSales e poderão assinar digitalmente."
-		/>
-	</div>
+			{/* Modal de sucesso */}
+			<SuccessModal
+				isOpen={showSuccessModal}
+				onClose={() => setShowSuccessModal(false)}
+				title="Contrato Enviado!"
+				description="O contrato foi enviado para assinatura com sucesso. Os signatários receberão o documento por e-mail do DocSales e poderão assinar digitalmente."
+			/>
+		</div>
 	);
 };

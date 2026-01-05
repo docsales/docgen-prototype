@@ -1,6 +1,19 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { ChevronRight, FileCheck, FileText, GripVertical, AlertCircle, RefreshCw, Trash, Sparkles, RotateCcw } from 'lucide-react';
+import {
+  ChevronRight,
+  FileCheck,
+  GripVertical,
+  AlertCircle,
+  RefreshCw,
+  Trash,
+  Sparkles,
+  RotateCcw,
+  Eraser,
+  FileText,
+  Copy,
+  X,
+} from 'lucide-react';
 import type {
   DealConfig,
   MappingValue,
@@ -11,7 +24,7 @@ import { IAMappingLoader } from '../components/IAMappingLoader';
 
 interface MappingStepProps {
   mappings: Record<string, MappingValue>;
-  onMap: (fieldId: string, value: string, source: 'drag' | 'manual') => void;
+  onMap: (fieldId: string, value: string | null, source: 'drag' | 'manual') => void;
   dealConfig: DealConfig;
   dealId: string;
   ocrData?: OcrDataByPerson[];
@@ -64,6 +77,12 @@ export const MappingStep: React.FC<MappingStepProps> = ({
   const [activeDropZone, setActiveDropZone] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [preMappedFields, setPreMappedFields] = useState<Set<string>>(new Set());
+  const [expandedOcrItem, setExpandedOcrItem] = useState<{
+    fullKey: string;
+    key: string;
+    value: unknown;
+  } | null>(null);
+  const [hasCopiedExpanded, setHasCopiedExpanded] = useState(false);
 
   const displayOcrData = ocrData || [];
 
@@ -125,6 +144,10 @@ export const MappingStep: React.FC<MappingStepProps> = ({
             e.dataTransfer.setData('text/plain', String(value));
             e.dataTransfer.effectAllowed = 'copy';
           }}
+          onClick={() => {
+            setExpandedOcrItem({ fullKey, key, value });
+            setHasCopiedExpanded(false);
+          }}
           className="ml-6 mb-2 flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded cursor-grab active:cursor-grabbing hover:bg-white hover:shadow-md transition-all"
         >
           <GripVertical className="w-4 h-4 text-slate-400" />
@@ -146,8 +169,8 @@ export const MappingStep: React.FC<MappingStepProps> = ({
       sections.push(
         <div key={`seller-${seller.id}`} className="mb-4">
           <details open className="group overflow-visible">
-            <summary className="list-none cursor-pointer sticky top-0 z-20 shadow-sm rounded-md group-open:rounded-b-none transition-all duration-200">
-              <div className="bg-gradient-to-r from-blue-50 to-blue-100 px-4 py-3 rounded-md group-open:rounded-b-none font-bold text-blue-900 text-sm flex items-center justify-between group-open:border-b border-blue-200/50">
+            <summary className="bg-gradient-to-r from-blue-50 to-blue-100 list-none cursor-pointer sticky -top-1 z-30 shadow-sm rounded-md group-open:rounded-b-none transition-all duration-200 -mx-1 p-1 group-open:border-b border-blue-200/50">
+              <div className="px-4 py-3 font-bold text-blue-900 text-sm flex items-center justify-between">
                 <span>Vendedor {index + 1}</span>
                 <ChevronRight className="w-4 h-4 group-open:rotate-90 transition-transform text-blue-400" />
               </div>
@@ -172,8 +195,8 @@ export const MappingStep: React.FC<MappingStepProps> = ({
       sections.push(
         <div key={`buyer-${buyer.id}`} className="mb-4">
           <details open className="group overflow-visible">
-            <summary className="list-none cursor-pointer sticky top-0 z-20 shadow-sm rounded-md group-open:rounded-b-none transition-all duration-200">
-              <div className="bg-gradient-to-r from-green-50 to-green-100 px-4 py-3 rounded-md group-open:rounded-b-none font-bold text-green-900 text-sm flex items-center justify-between group-open:border-b border-green-200/50">
+            <summary className="bg-gradient-to-r from-green-50 to-green-100 list-none cursor-pointer sticky -top-1 z-30 shadow-sm rounded-md group-open:rounded-b-none transition-all duration-200 group-open:border-b border-green-200/50 -mx-1 p-1">
+              <div className="px-4 py-3 font-bold text-green-900 text-sm flex items-center justify-between">
                 <span>Comprador {index + 1}</span>
                 <ChevronRight className="w-4 h-4 group-open:rotate-90 transition-transform text-green-400" />
               </div>
@@ -196,8 +219,8 @@ export const MappingStep: React.FC<MappingStepProps> = ({
     sections.push(
       <div key="property" className="mb-4">
         <details open className="group overflow-visible">
-          <summary className="list-none cursor-pointer sticky top-0 z-20 shadow-sm rounded-md group-open:rounded-b-none transition-all duration-200">
-            <div className="bg-gradient-to-r from-purple-50 to-purple-100 px-4 py-3 rounded-md group-open:rounded-b-none font-bold text-purple-900 text-sm flex items-center justify-between group-open:border-b border-purple-200/50">
+          <summary className="bg-gradient-to-r from-purple-50 to-purple-100 list-none cursor-pointer sticky -top-1 z-30 shadow-sm rounded-md group-open:rounded-b-none transition-all duration-200 group-open:border-b border-purple-200/50 -mx-1 p-1">
+            <div className="px-4 py-3 font-bold text-purple-900 text-sm flex items-center justify-between">
               <span>Imóvel</span>
               <ChevronRight className="w-4 h-4 group-open:rotate-90 transition-transform text-purple-400" />
             </div>
@@ -246,7 +269,6 @@ export const MappingStep: React.FC<MappingStepProps> = ({
           const val = e.dataTransfer.getData('text/plain');
           if (val) {
             onMap(fieldId, val, 'drag');
-            // Remover da lista de pré-mapeados se o usuário sobrescrever
             if (isPreMapped) {
               setPreMappedFields(prev => {
                 const newSet = new Set(prev);
@@ -256,8 +278,14 @@ export const MappingStep: React.FC<MappingStepProps> = ({
             }
           }
         }}
+        onClick={() => {
+          if (!mapping) {
+            onMap(fieldId, '', 'manual');
+          }
+        }}
         className={`
-          p-3 rounded-lg border-2 transition-all duration-200 relative
+          cursor-pointer p-3 rounded-lg border-2 transition-all duration-200 relative
+          hover:shadow-sm hover:scale-[1.02]
           ${mapping
             ? isPreMapped
               ? 'bg-gradient-to-br from-purple-50 to-pink-50 border-purple-400 border-solid shadow-sm'
@@ -286,6 +314,7 @@ export const MappingStep: React.FC<MappingStepProps> = ({
           <div className="flex items-center justify-between gap-2">
             <input
               type="text"
+              autoFocus
               value={mapping.value}
               onChange={(e) => {
                 onMap(fieldId, e.target.value, 'manual');
@@ -312,7 +341,7 @@ export const MappingStep: React.FC<MappingStepProps> = ({
             />
             <button
               onClick={() => {
-                onMap(fieldId, '', 'manual');
+                onMap(fieldId, null, 'manual');
                 // Remover da lista de pré-mapeados ao limpar
                 if (isPreMapped) {
                   setPreMappedFields(prev => {
@@ -322,7 +351,7 @@ export const MappingStep: React.FC<MappingStepProps> = ({
                   });
                 }
               }}
-              className="cursor-pointer text-red-400 hover:text-red-600 p-1 z-20 relative flex-shrink-0"
+              className="cursor-pointer text-red-400 hover:text-red-600 p-1 z-10 relative flex-shrink-0"
               title="Remover mapeamento"
             >
               <Trash className="w-4 h-4" />
@@ -330,7 +359,7 @@ export const MappingStep: React.FC<MappingStepProps> = ({
           </div>
         ) : (
           <div className={`h-8 flex items-center text-sm italic transition-colors pointer-events-none ${isActive ? 'text-primary font-medium' : 'text-slate-400'}`}>
-            {isActive ? 'Soltar para mapear!' : 'Arraste um dado aqui...'}
+            {isActive ? 'Soltar para mapear!' : 'Arraste uma variável ou clique aqui...'}
           </div>
         )}
 
@@ -471,6 +500,74 @@ export const MappingStep: React.FC<MappingStepProps> = ({
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in duration-500">
+      {/* Modal: visualizar valor completo do OCR */}
+      {expandedOcrItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            // Clique no backdrop fecha; clique dentro do modal não fecha
+            if (e.target === e.currentTarget) setExpandedOcrItem(null);
+          }}
+        >
+          <div className="w-full max-w-3xl bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs text-slate-500 font-bold uppercase">Variável (OCR)</div>
+                <div className="text-sm font-semibold text-slate-800 truncate" title={expandedOcrItem.fullKey}>
+                  {expandedOcrItem.fullKey}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  className="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-md transition-colors"
+                  onClick={async () => {
+                    const text =
+                      typeof expandedOcrItem.value === 'string'
+                        ? expandedOcrItem.value
+                        : JSON.stringify(expandedOcrItem.value, null, 2);
+
+                    try {
+                      await navigator.clipboard.writeText(text);
+                      setHasCopiedExpanded(true);
+                      setTimeout(() => setHasCopiedExpanded(false), 1500);
+                    } catch {
+                      // fallback simples
+                      try {
+                        window.prompt('Copie o conteúdo abaixo:', text);
+                      } catch {
+                        // noop
+                      }
+                    }
+                  }}
+                >
+                  <Copy className="w-4 h-4" />
+                  {hasCopiedExpanded ? 'Copiado!' : 'Copiar'}
+                </button>
+                <button
+                  type="button"
+                  className="cursor-pointer p-2 hover:bg-slate-200 rounded-md text-slate-600"
+                  onClick={() => setExpandedOcrItem(null)}
+                  title="Fechar"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 max-h-[70vh] overflow-auto">
+              <pre className="whitespace-pre-wrap break-words text-sm text-slate-800 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                {typeof expandedOcrItem.value === 'string'
+                  ? expandedOcrItem.value
+                  : JSON.stringify(expandedOcrItem.value, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Banner informativo de pré-mapeamento */}
       {preMappedFields.size > 0 && (
         <div className="bg-gradient-to-r from-purple-50 via-pink-50 to-purple-50 border-2 border-purple-200 rounded-xl p-4 shadow-sm">
@@ -504,8 +601,10 @@ export const MappingStep: React.FC<MappingStepProps> = ({
               Dados Extraídos (OCR)
             </h3>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
-            {renderOcrSections()}
+          <div className="flex-1 overflow-y-auto px-4 pb-4 scrollbar-hide">
+            <div className="pt-4">
+              {renderOcrSections()}
+            </div>
           </div>
         </div>
 
@@ -547,39 +646,57 @@ export const MappingStep: React.FC<MappingStepProps> = ({
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
-            {isLoadingVariables ? (
-              <IAMappingLoader stage={loaderStage} />
-            ) : variablesError ? (
-              <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <AlertCircle className="w-16 h-16 text-red-400 mb-4" />
-                <p className="text-red-600 font-semibold mb-2">Erro ao carregar variáveis</p>
-                <p className="text-slate-500 text-sm">{variablesError}</p>
-              </div>
-            ) : templateVariables.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <FileCheck className="w-16 h-16 text-slate-300 mb-4" />
-                <p className="text-slate-500 font-semibold mb-2">Nenhuma variável encontrada</p>
-                <p className="text-slate-400 text-sm">O template não possui variáveis para mapear</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {groupedVariables.map((group) => (
-                  <div key={group.prefix} className="space-y-2">
-                    <div className="bg-gradient-to-r from-slate-100 to-slate-50 px-3 py-2 rounded-lg sticky top-0 z-10">
-                      <h4 className="font-bold text-slate-800 text-sm">
-                        {formatPrefixLabel(group.prefix)}
-                      </h4>
-                    </div>
-                    <div className="space-y-3 pl-1">
-                      {group.variables.map((variable) =>
-                        renderContractField(variable.fullKey, variable.label)
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="flex-1 overflow-y-auto px-4 pb-4 scrollbar-hide">
+            <div className="pt-4">
+              {isLoadingVariables ? (
+                <IAMappingLoader stage={loaderStage} />
+              ) : variablesError ? (
+                <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                  <AlertCircle className="w-16 h-16 text-red-400 mb-4" />
+                  <p className="text-red-600 font-semibold mb-2">Erro ao carregar variáveis</p>
+                  <p className="text-slate-500 text-sm">{variablesError}</p>
+                </div>
+              ) : templateVariables.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                  <FileCheck className="w-16 h-16 text-slate-300 mb-4" />
+                  <p className="text-slate-500 font-semibold mb-2">Nenhuma variável encontrada</p>
+                  <p className="text-slate-400 text-sm">O template não possui variáveis para mapear</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {groupedVariables.map((group) => (
+                    <details key={group.prefix} open className="group overflow-visible mb-4">
+                      <summary className="bg-slate-100 list-none cursor-pointer sticky -top-1 z-30 shadow-sm rounded-md group-open:rounded-b-none transition-all duration-200 -mx-1 p-1 group-open:border-b border-slate-200">
+                        <div className="px-4 py-3 font-bold text-slate-800 text-sm flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span>{formatPrefixLabel(group.prefix)}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                group.variables.forEach(v => onMap(v.fullKey, null, 'manual'));
+                              }}
+                              className="cursor-pointer p-1 hover:bg-red-50 rounded text-red-400 hover:text-red-600 transition-colors"
+                              title={`Limpar todos os campos de ${formatPrefixLabel(group.prefix)}`}
+                            >
+                              <Eraser className="w-4 h-4" />
+                            </button>
+                            <ChevronRight className="w-4 h-4 group-open:rotate-90 transition-transform text-slate-400" />
+                          </div>
+                        </div>
+                      </summary>
+                      <div className="p-4 bg-white border-x border-b border-slate-100 rounded-b-xl space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                        {group.variables.map((variable) =>
+                          renderContractField(variable.fullKey, variable.label)
+                        )}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

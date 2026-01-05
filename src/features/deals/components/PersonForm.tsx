@@ -79,7 +79,7 @@ export const PersonForm: React.FC<PersonFormProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <div className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 ${
+            <div className={`px-3 py-1 rounded-md text-xs font-semibold flex items-center gap-1 ${
               isPF 
                 ? 'bg-blue-50 text-primary border border-primary/20' 
                 : 'bg-purple-50 text-purple-600 border border-purple-200'

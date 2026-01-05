@@ -13,6 +13,8 @@ import {
 	AlertCircle,
 	Settings,
 	Calendar,
+	ArrowLeft,
+	ArrowRight,
 } from 'lucide-react';
 import { PersonList } from '../components/PersonList';
 import { PropertyForm } from '../components/PropertyForm';
@@ -540,6 +542,26 @@ export const ConfigStep: React.FC<ConfigStepProps> = ({ data, onChange }) => {
 							/>
 						</div>
 					)}
+
+					{/* Buttons Navigation */}
+					<div className="flex justify-between items-center mt-6">
+						{data.activePartyTab && data.activePartyTab !== 'sellers' ? (
+							<Button variant="secondary" onClick={() => onChange({ activePartyTab: data.activePartyTab === 'buyers' ? 'sellers' : 'buyers' } as any)}>
+								<div className="flex items-center gap-2">
+									<ArrowLeft className="w-4 h-4" />
+									{data.activePartyTab === 'buyers' ? 'Vendedores' : 'Compradores'}
+								</div>
+							</Button>
+						) : <div className="w-full" />}
+						{data.activePartyTab !== 'property' && (
+							<Button variant="secondary" onClick={() => onChange({ activePartyTab: data.activePartyTab === 'buyers' ? 'property' : 'buyers' } as any)}>
+								<div className="flex items-center gap-2">
+									{data.activePartyTab === 'buyers' ? 'Imóvel' : 'Compradores'}
+									<ArrowRight className="w-4 h-4" />
+								</div>
+							</Button>
+						)}
+					</div>
 				</div>
 			</section>
 

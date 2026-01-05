@@ -26,11 +26,70 @@ const generateOcrDataFromFiles = (files: UploadedFile[]): OcrDataByPerson[] => {
 
   const ocrDataMap = new Map<string, any>();
 
+  const formatDateToBr = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const s = value.trim();
+    if (!s) return null;
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+    const dt = new Date(s);
+    if (Number.isNaN(dt.getTime())) return null;
+    const dd = String(dt.getDate()).padStart(2, '0');
+    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(dt.getFullYear());
+    return `${dd}/${mm}/${yyyy}`;
+  };
+
+  const formatTimelineBullets = (timeline: unknown): string | null => {
+    if (!Array.isArray(timeline) || timeline.length === 0) return null;
+
+    const lines = timeline.map((e: any) => {
+      const dateBr = formatDateToBr(e?.data);
+      const registro = typeof e?.registro === 'string' ? e.registro.trim() : '';
+      const descricao = typeof e?.descricao === 'string' ? e.descricao.trim() : '';
+      const tipo = typeof e?.tipo === 'string' ? e.tipo.trim() : '';
+
+      const parts: string[] = [];
+      if (dateBr) parts.push(dateBr);
+      if (registro) parts.push(`(${registro})`);
+      if (descricao) parts.push(descricao);
+      else if (tipo) parts.push(tipo);
+
+      const text = parts.join(' ').trim();
+      return `- ${text || '(sem descrição)'}`;
+    });
+
+    return lines.join('\n');
+  };
+
+  const getTimelineCandidate = (docData: any): unknown => {
+    if (!docData || typeof docData !== 'object') return null;
+    return (
+      docData.timeline ??
+      docData.timeline_cronologica ??
+      docData.dados_matricula?.timeline ??
+      docData.dados_matricula?.timeline_cronologica ??
+      null
+    );
+  };
+
   files
     .filter((file) => file && file.ocrExtractedData && file.ocrStatus === 'completed')
     .forEach((file) => {
       const personId = file.personId || 'property';
-      const docData = file.ocrExtractedData;
+      const docData: any = file.ocrExtractedData;
+
+      // Enriquecer matrícula/imóvel com uma timeline em string (para mapear sem lidar com arrays)
+      if (personId === 'property' && docData && typeof docData === 'object') {
+        const candidate = getTimelineCandidate(docData);
+        const timelineDescricao = formatTimelineBullets(candidate);
+        if (timelineDescricao) {
+          docData.timeline_descricao = docData.timeline_descricao || timelineDescricao;
+          // Compatibilidade com templates que usam timeline_registros
+          docData.timeline_registros = docData.timeline_registros || timelineDescricao;
+        }
+      }
 
       if (docData) {
         if (ocrDataMap.has(personId)) {
@@ -360,6 +419,7 @@ export const NewDealWizard: React.FC = () => {
         });
 
         setDealId(newDeal.id);
+        navigate(`/deals/${newDeal.id}/edit?step=2`, { replace: true });
       } catch (error) {
         console.error('❌ Erro ao criar deal:', error);
         setSaveError('Erro ao criar proposta. Tente novamente.');
@@ -434,12 +494,14 @@ export const NewDealWizard: React.FC = () => {
     }
 
     setDirection(1);
-    setStep(s => Math.min(s + 1, 5));
+    setStep(step => Math.min(step + 1, 5));
+    setStepAndNavigate(step + 1);
   }
 
   const prevStep = () => {
     setDirection(-1);
-    setStep(s => Math.max(s - 1, 1));
+    setStep(step => Math.max(step - 1, 1));
+    setStepAndNavigate(step - 1);
   }
 
   /**
@@ -464,22 +526,22 @@ export const NewDealWizard: React.FC = () => {
         }
         return 'Dados incompletos ou inválidos. Verifique se o preview foi gerado e se todos os dados estão corretos.';
       }
-      
+
       // Erro 400 - Bad Request
       if (status === 400) {
         return data.message || data.erro || 'Requisição inválida. Verifique os dados fornecidos.';
       }
-      
+
       // Erro 404 - Não encontrado
       if (status === 404) {
         return 'Contrato não encontrado. Verifique se ele ainda existe.';
       }
-      
+
       // Erro 500 - Erro do servidor
       if (status >= 500) {
         return 'Erro no servidor. Tente novamente em alguns instantes.';
       }
-      
+
       // Outros erros
       if (data.message) {
         return data.message;
@@ -488,7 +550,7 @@ export const NewDealWizard: React.FC = () => {
         return data.erro;
       }
     }
-    
+
     // Erro de rede ou timeout
     if (error?.message) {
       if (error.message.includes('timeout') || error.message.includes('Network Error')) {
@@ -531,11 +593,11 @@ export const NewDealWizard: React.FC = () => {
       setSaveSuccess(true);
     } catch (error: any) {
       console.error('❌ Erro ao enviar contrato:', error);
-      
+
       // Extrair mensagem de erro detalhada
       const errorMessage = extractErrorMessage(error);
       setSaveError(errorMessage);
-      
+
       setTimeout(() => setSaveError(null), 5000); // Aumentado para 5 segundos para dar tempo de ler
       setSubmissionStatus('editing');
       return;
@@ -550,7 +612,7 @@ export const NewDealWizard: React.FC = () => {
   const handleStepperClick = (targetStep: number) => {
     if (targetStep < step) {
       setDirection(-1);
-      setStep(targetStep);
+      setStepAndNavigate(targetStep);
     } else {
       let canProceed = true;
       for (let i = 1; i < targetStep; i++) {
@@ -562,7 +624,7 @@ export const NewDealWizard: React.FC = () => {
 
       if (canProceed) {
         setDirection(1);
-        setStep(targetStep);
+        setStepAndNavigate(targetStep);
       }
     }
   }
@@ -573,6 +635,12 @@ export const NewDealWizard: React.FC = () => {
     } else {
       navigate('/dashboard');
     }
+  }
+
+  const setStepAndNavigate = (step: number) => {
+    setStep(step);
+    navigate(`/deals/${dealId}/edit?step=${step}`, { replace: true });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   if (isDealLoading || isLoadingDeal) {
@@ -621,6 +689,14 @@ export const NewDealWizard: React.FC = () => {
     );
   }
 
+  const stepTitles = [
+    'Configurações do contrato',
+    'Documentos do contrato',
+    'Variáveis do contrato',
+    'Preview do contrato',
+    'Signatários do contrato',
+  ];
+
   const currentStepValid = isStepValid(step);
 
   return (
@@ -651,7 +727,8 @@ export const NewDealWizard: React.FC = () => {
                   <button
                     onClick={() => handleStepperClick(s)}
                     disabled={!isValidUpToHere && s > step}
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all 
+                    data-tip={stepTitles[s - 1]}
+                    className={`tooltip tooltip-bottom w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all 
                                ${step === s ? 'bg-primary text-white shadow-lg scale-110 ring-2 ring-blue-100 cursor-default' :
                         step > s ? 'bg-green-500 text-white cursor-pointer hover:bg-green-600' :
                           (!isValidUpToHere ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-slate-100 text-slate-400 cursor-pointer hover:bg-slate-200')
@@ -693,24 +770,20 @@ export const NewDealWizard: React.FC = () => {
                   config={configData}
                   files={documents}
                   onFilesChange={(newFilesOrUpdater) => {
-                    // Lidar com função updater ou array direto
                     if (typeof newFilesOrUpdater === 'function') {
                       setDocuments((prevFiles) => {
                         const updatedFiles = newFilesOrUpdater(prevFiles);
-                        // Atualizar ocrData sempre que os arquivos mudarem
                         const updatedOcrData = generateOcrDataFromFiles(updatedFiles);
                         setOcrData(updatedOcrData);
                         return updatedFiles;
                       });
                     } else {
                       setDocuments(newFilesOrUpdater);
-                      // Atualizar ocrData sempre que os arquivos mudarem
                       const updatedOcrData = generateOcrDataFromFiles(newFilesOrUpdater);
                       setOcrData(updatedOcrData);
                     }
                   }}
                   onNext={() => {
-                    // Garantir que ocrData está atualizado antes de navegar
                     const updatedOcrData = generateOcrDataFromFiles(documents);
                     setOcrData(updatedOcrData);
                     nextStep();
@@ -724,7 +797,7 @@ export const NewDealWizard: React.FC = () => {
                   mappings={mappings}
                   dealId={dealId!}
                   onMap={(fieldId, value, source) => {
-                    if (value === '') {
+                    if (value === null) {
                       setMappings(prev => {
                         const newMappings = { ...prev };
                         delete newMappings[fieldId];

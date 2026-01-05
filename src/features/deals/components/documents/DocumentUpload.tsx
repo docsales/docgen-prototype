@@ -18,14 +18,13 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
 	const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		if (e.target.files && e.target.files.length > 0) {
 			const fileArray = Array.from(e.target.files);
-			// Filter by size
 			const validFiles = fileArray.filter(file => {
 				const sizeMB = file.size / 1024 / 1024;
 				return sizeMB <= maxSize;
 			});
 			onFilesSelected(validFiles);
 		}
-		// Reset input to allow selecting the same files again
+
 		if (fileInputRef.current) {
 			fileInputRef.current.value = '';
 		}
@@ -71,13 +70,12 @@ export const DocumentList: React.FC<DocumentListProps> = ({ files, onRemove }) =
 						className="bg-white p-4 rounded-lg border border-slate-200 flex items-center justify-between shadow-sm"
 					>
 						<div className="flex items-center gap-3 flex-1">
-							<div className={`p-2 rounded-lg ${
-								f.validated === true
+							<div className={`p-2 rounded-lg ${f.validated === true
 									? 'bg-green-100 text-green-700'
 									: f.validated === false
-									? 'bg-red-100 text-red-700'
-									: 'bg-slate-100 text-slate-600'
-							}`}>
+										? 'bg-red-100 text-red-700'
+										: 'bg-slate-100 text-slate-600'
+								}`}>
 								<FileCheck className="w-5 h-5" />
 							</div>
 							<div className="flex-1 min-w-0">

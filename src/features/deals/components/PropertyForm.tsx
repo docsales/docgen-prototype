@@ -44,6 +44,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
   onDeedCountChange,
 }) => {
   const alertMessage = STATES_WITH_ALERTS[propertyState];
+  const deedCountClamped = Math.min(Math.max(deedCount || 1, 1), 5);
 
   return (
     <div className="space-y-6">
@@ -118,28 +119,30 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
               <button
                 type="button"
                 className="cursor-pointer w-10 h-10 bg-white border-r border-slate-200 flex items-center justify-center hover:bg-slate-50 text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                onClick={() => onDeedCountChange(Math.max(1, deedCount - 1))}
-                disabled={deedCount <= 1}
+                onClick={() => onDeedCountChange(Math.max(1, deedCountClamped - 1))}
+                disabled={deedCountClamped <= 1}
               >
                 <Minus className="w-4 h-4" />
               </button>
               <div className="w-12 h-10 bg-white flex items-center justify-center font-bold text-lg text-slate-800 border-r border-slate-200">
-                {deedCount}
+                {deedCountClamped}
               </div>
               <button
                 type="button"
                 className="cursor-pointer w-10 h-10 bg-white flex items-center justify-center hover:bg-slate-50 text-slate-600 transition-colors"
-                onClick={() => onDeedCountChange(deedCount + 1)}
+                onClick={() => onDeedCountChange(Math.min(5, deedCountClamped + 1))}
+                disabled={deedCountClamped >= 5}
               >
                 <Plus className="w-4 h-4" />
               </button>
             </div>
           </div>
-          {deedCount > 1 && (
+          {deedCountClamped > 1 && (
             <p className="text-sm text-slate-500 mt-2">
-              Serão necessárias {deedCount} certidões de matrícula atualizadas.
+              Serão necessárias {deedCountClamped} certidões de matrícula atualizadas.
             </p>
           )}
+          <p className="text-xs text-slate-400 mt-1">Máximo: 5 matrículas.</p>
         </div>
       </div>
     </div>

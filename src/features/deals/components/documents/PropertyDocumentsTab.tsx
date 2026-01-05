@@ -29,6 +29,8 @@ export const PropertyDocumentsTab: React.FC<PropertyDocumentsTabProps> = ({
 	const propertyFiles = uploadedFiles.filter(f => f.category === 'property');
 	const [linkingFileId, setLinkingFileId] = useState<string | null>(null);
 	const [linkError, setLinkError] = useState<string | null>(null);
+	const deedCountClamped = Math.min(Math.max(deedCount || 1, 1), 5);
+	const deedLabel = deedCountClamped === 1 ? '1 matrícula' : `${deedCountClamped} matrículas`;
 	
 	// Obter documentos da API ou fallback para array vazio
 	const requiredDocuments = checklist?.imovel.documentos || [];
@@ -144,32 +146,46 @@ export const PropertyDocumentsTab: React.FC<PropertyDocumentsTabProps> = ({
 					<span>Tipo: {propertyType === 'urbano' ? 'Urbano' : 'Rural'}</span>
 					<span>•</span>
 					<span>Situação: {propertyState.replace('_', ' ')}</span>
-					{deedCount > 1 && (
+					{deedCountClamped > 1 && (
 						<>
 							<span>•</span>
-							<span>{deedCount} matrículas</span>
+							<span>{deedLabel}</span>
 						</>
 					)}
 				</div>
+				{deedCountClamped > 1 && (
+					<div className="mt-2 text-sm font-semibold text-purple-900">
+						Faça upload de <span className="underline">{deedLabel}</span> (campo aceita até 5 documentos).
+					</div>
+				)}
 			</div>
 
 			{/* Lista de documentos obrigatórios */}
 			<div className="space-y-3">
 				{requiredDocuments.length > 0 ? (
-					requiredDocuments.map((doc) => (
-						<DocumentRequirementItem
-							key={doc.id}
-							documentId={doc.id}
-							documentName={doc.nome}
-							description={doc.observacao}
-							uploadedFiles={propertyFiles}
-							allFiles={propertyFiles}
-							onFileUpload={handleFileUpload}
-							onRemoveFile={onRemoveFile}
-							onLinkExistingFile={handleLinkExistingFile}
-							linkingFileId={linkingFileId}
-						/>
-					))
+					requiredDocuments.map((doc) => {
+						const isMatricula = doc.id === 'MATRICULA';
+						const extraHint =
+							deedCountClamped > 1 && isMatricula
+								? `\n\nObrigatório: envie ${deedLabel}.`
+								: '';
+
+						return (
+							<DocumentRequirementItem
+								key={doc.id}
+								documentId={doc.id}
+								documentName={doc.nome}
+								description={`${doc.observacao || ''}${extraHint}`.trim() || undefined}
+								uploadedFiles={propertyFiles}
+								allFiles={propertyFiles}
+								onFileUpload={handleFileUpload}
+								onRemoveFile={onRemoveFile}
+								onLinkExistingFile={handleLinkExistingFile}
+								linkingFileId={linkingFileId}
+								maxFiles={isMatricula ? deedCountClamped : 5}
+							/>
+						);
+					})
 				) : (
 					<div className="text-center py-12 text-slate-500">
 						<span className="loading loading-spinner loading-lg w-12 h-12 text-[#ef0474] mx-auto mb-4"></span>
