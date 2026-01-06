@@ -37,7 +37,7 @@ export const Button: React.FC<ButtonProps> = ({
     >
       {isLoading ? (
         <>
-          <span className="loading loading-spinner loading-sm"></span>
+          <span className="loading loading-spinner loading-sm" />
           <span>Processando...</span>
         </>
       ) : children}

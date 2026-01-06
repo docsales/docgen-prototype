@@ -151,6 +151,10 @@ export const NewDealWizard: React.FC = () => {
   const [mappings, setMappings] = useState<Record<string, MappingValue>>({});
   const [signatories, setSignatories] = useState<Signatory[]>([]);
   const [ocrData, setOcrData] = useState<OcrDataByPerson[]>([]);
+  const [documentsGate, setDocumentsGate] = useState<{ canContinue: boolean; message: string }>({
+    canContinue: false,
+    message: 'Carregando checklist de documentos...',
+  });
 
   useEffect(() => {
     if (existingDeal && editDealId) {
@@ -380,7 +384,7 @@ export const NewDealWizard: React.FC = () => {
           configData.sellers.length > 0 &&
           configData.buyers.length > 0;
       case 2:
-        return documents.length > 0;
+        return documentsGate.canContinue;
       case 3:
         return Object.keys(mappings).length > 0;
       case 4:
@@ -783,11 +787,7 @@ export const NewDealWizard: React.FC = () => {
                       setOcrData(updatedOcrData);
                     }
                   }}
-                  onNext={() => {
-                    const updatedOcrData = generateOcrDataFromFiles(documents);
-                    setOcrData(updatedOcrData);
-                    nextStep();
-                  }}
+                  onValidationGateChange={setDocumentsGate}
                   onAnalysisComplete={(data) => setOcrData(data)}
                   dealId={dealId}
                 />
@@ -882,7 +882,24 @@ export const NewDealWizard: React.FC = () => {
               )}
 
               {/* Botão Continuar/Finalizar */}
-              {step !== 2 && step !== 4 && (
+              {step === 2 ? (
+                <div className="flex items-center gap-3">
+                  <p
+                    className={`hidden md:block text-sm ${documentsGate.canContinue ? 'text-green-700' : 'text-slate-600'} max-w-[520px] truncate`}
+                    title={documentsGate.message}
+                  >
+                    {documentsGate.message}
+                  </p>
+                  <Button
+                    onClick={nextStep}
+                    disabled={!documentsGate.canContinue}
+                    className={!documentsGate.canContinue ? 'opacity-50 grayscale' : ''}
+                  >
+                    Continuar
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : step !== 4 && (
                 <Button
                   onClick={step === 5 ? handleFinish : nextStep}
                   disabled={!currentStepValid || isCreatingDeal || isSavingMappings}

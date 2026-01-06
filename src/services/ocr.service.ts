@@ -65,17 +65,25 @@ export const ocrService = {
   /**
    * Consulta status de processamento de um documento
    */
-  async getStatus(fileId: string): Promise<OcrStatusResponse> {
+  async getStatus(
+    fileId: string,
+    opts?: { timeoutMs?: number; silentTimeout?: boolean }
+  ): Promise<OcrStatusResponse> {
     try {
-      const response = await server.api.get(`/document/ocr/status/${fileId}`, { withCredentials: true });
+      const response = await server.api.get(
+        `/document/ocr/status/${fileId}`,
+        { withCredentials: true, timeout: opts?.timeoutMs }
+      );
       
       const result = response.data;
       return result;
 
-    } catch (error) {
-      console.error('❌ Erro ao consultar status:', error);
+    } catch (error: any) {
+      if (!(opts?.silentTimeout && error?.code === 'ECONNABORTED')) {
+        console.error('❌ Erro ao consultar status:', error);
+      }
       return {
-        status: 'error',
+        status: opts?.silentTimeout && error?.code === 'ECONNABORTED' ? 'processing' : 'error',
         error: error instanceof Error ? error.message : 'Erro desconhecido',
       };
     }
@@ -105,6 +113,25 @@ export const ocrService = {
         errors: documentIds.length,
         stillProcessing: 0,
       };
+    }
+  },
+
+  /**
+   * Dispara processamento em batch sem bloquear UI.
+   * Usa timeout curto e não trata ECONNABORTED como erro (o resultado chegará por WebSocket).
+   */
+  async processBatchFireAndForget(documentIds: string[]): Promise<void> {
+    try {
+      await server.api.post(
+        '/document/ocr/process-batch',
+        { documentIds },
+        { withCredentials: true, timeout: 1000 }
+      );
+    } catch (error: any) {
+      if (error?.code === 'ECONNABORTED') {
+        return;
+      }
+      console.warn('⚠️ Falha ao disparar process-batch (fire-and-forget):', error);
     }
   },
 

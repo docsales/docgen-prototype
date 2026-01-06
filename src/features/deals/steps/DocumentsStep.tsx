@@ -14,17 +14,18 @@ import { useRemoveDocumentFromDeal } from '../hooks/useDeals';
 interface DocumentsStepProps {
 	files: UploadedFile[];
 	onFilesChange: (files: UploadedFile[] | ((prevFiles: UploadedFile[]) => UploadedFile[])) => void;
-	onNext?: () => void;
 	onAnalysisComplete?: (data: any) => void;
 	config: DealConfig;
 	dealId?: string | null;
+	onValidationGateChange?: (gate: { canContinue: boolean; message: string }) => void;
 }
 
 export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 	files,
 	onFilesChange,
 	config,
-	dealId
+	dealId,
+	onValidationGateChange
 }) => {
 	const removeDocumentFromDealMutation = useRemoveDocumentFromDeal();
 
@@ -152,7 +153,6 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 
 	// Carregar checklist apenas quando o config mudar de verdade
 	useEffect(() => {
-		// Criar uma representação em string das configurações relevantes para comparação
 		const configKey = JSON.stringify({
 			buyers: config.buyers.map(b => ({
 				personType: b.personType,
@@ -190,6 +190,96 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 			}
 		});
 	}
+
+	const fileSatisfiesType = (file: UploadedFile, documentType: string): boolean => {
+		if (file.type === documentType) return true;
+		if (file.types && file.types.includes(documentType)) return true;
+		return false;
+	};
+
+	const deedCountClamped = Math.min(Math.max(config.deedCount || 1, 1), 5);
+
+	// Gate: só permite avançar quando TODOS os docs obrigatórios foram anexados e todos os anexos foram validados com sucesso
+	const validationGate = useCallback(() => {
+		if (!checklist) {
+			return { canContinue: false, message: 'Carregando checklist de documentos...' };
+		}
+
+		const errorCount = files.filter(f => f.validated === false).length;
+		if (errorCount > 0) {
+			return { canContinue: false, message: `Há ${errorCount} documento(s) com erro. Remova e reenvie para continuar.` };
+		}
+
+		const pendingCount = files.filter(f => f.validated === undefined || f.ocrStatus === 'processing' || f.ocrStatus === 'uploading').length;
+		if (pendingCount > 0) {
+			return { canContinue: false, message: `Aguardando validação de ${pendingCount} documento(s)...` };
+		}
+
+		const allUploadedValidated = files.every(f => f.validated === true);
+		if (!allUploadedValidated) {
+			return { canContinue: false, message: 'Aguardando validação dos documentos...' };
+		}
+
+		let missingRequired = 0;
+
+		// Vendedores
+		const sellerRequiredDocs = checklist.vendedores.documentos.filter(d => d.obrigatorio);
+		config.sellers.forEach((seller) => {
+			const isSpouse = seller.isSpouse || false;
+			const expectedDe = isSpouse ? 'conjuge' : 'titular';
+			const docsForThisSeller = sellerRequiredDocs.filter(doc => !doc.de || doc.de === expectedDe);
+			const sellerFiles = files.filter(f => f.category === 'sellers' && f.personId === seller.id);
+
+			docsForThisSeller.forEach(doc => {
+				const hasValidated = sellerFiles.some(f => fileSatisfiesType(f, doc.id) && f.validated === true);
+				if (!hasValidated) missingRequired += 1;
+			});
+		});
+
+		// Compradores
+		const buyerRequiredDocs = checklist.compradores.documentos.filter(d => d.obrigatorio);
+		config.buyers.forEach((buyer) => {
+			const isSpouse = buyer.isSpouse || false;
+			const expectedDe = isSpouse ? 'conjuge' : 'titular';
+			const docsForThisBuyer = buyerRequiredDocs.filter(doc => !doc.de || doc.de === expectedDe);
+			const buyerFiles = files.filter(f => f.category === 'buyers' && f.personId === buyer.id);
+
+			docsForThisBuyer.forEach(doc => {
+				const hasValidated = buyerFiles.some(f => fileSatisfiesType(f, doc.id) && f.validated === true);
+				if (!hasValidated) missingRequired += 1;
+			});
+		});
+
+		// Imóvel
+		const propertyRequiredDocs = checklist.imovel.documentos.filter(d => d.obrigatorio);
+		const propertyFiles = files.filter(f => f.category === 'property');
+
+		propertyRequiredDocs.forEach(doc => {
+			if (doc.id === 'MATRICULA') {
+				const validatedCount = propertyFiles.filter(f => fileSatisfiesType(f, doc.id) && f.validated === true).length;
+				if (validatedCount < deedCountClamped) {
+					missingRequired += (deedCountClamped - validatedCount);
+				}
+				return;
+			}
+
+			const hasValidated = propertyFiles.some(f => fileSatisfiesType(f, doc.id) && f.validated === true);
+			if (!hasValidated) missingRequired += 1;
+		});
+
+		if (missingRequired > 0) {
+			return { canContinue: false, message: `Faltam anexar ${missingRequired} documento(s) obrigatório(s) para continuar.` };
+		}
+
+		return { canContinue: true, message: 'Tudo certo! Você já pode continuar.' };
+	}, [checklist, config.buyers, config.sellers, deedCountClamped, files]);
+
+	const { canContinue, message: continueMessage } = validationGate();
+
+	// Informar ao wizard o estado de "pode continuar" do Step 2 (para renderizar no rodapé fixo)
+	useEffect(() => {
+		onValidationGateChange?.({ canContinue, message: continueMessage });
+	}, [canContinue, continueMessage, onValidationGateChange]);
 
 	if (isLoadingChecklist) {
 		return (
@@ -237,8 +327,7 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 				<ChecklistSummary
 					checklist={checklist}
 					uploadedFiles={files}
-					numSellers={config.sellers.length}
-					numBuyers={config.buyers.length}
+					config={config}
 				/>
 			)}
 

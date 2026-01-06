@@ -32,6 +32,7 @@ export const useOcr = (
   const processingRef = useRef<Set<string>>(new Set());
   const processedFilesRef = useRef<Set<string>>(new Set());
   const socketRef = useRef<Socket | null>(null);
+  const manualRefreshTimerRef = useRef<number | null>(null);
 
   /**
    * Atualiza status OCR de um arquivo
@@ -107,6 +108,18 @@ export const useOcr = (
       processingRef.current.delete(requestKey);
     }
   }, [updateFileOcrStatus, onComplete, onError, files]);
+
+  const checkFileStatusFast = useCallback(async (documentId: string): Promise<void> => {
+    try {
+      // Timeout curto e silencioso: serve só como fallback quando WS não está conectado.
+      const result = await ocrService.getStatus(documentId, { timeoutMs: 5000, silentTimeout: true });
+      if (result.status === 'completed' || result.status === 'error') {
+        await checkFileStatus(documentId);
+      }
+    } catch {
+      // noop
+    }
+  }, [checkFileStatus]);
 
   /**
    * Processa um arquivo via OCR
@@ -254,10 +267,15 @@ export const useOcr = (
   /**
    * Refresh manual - força processamento em batch de todos os arquivos em processamento
    */
-  const manualRefresh = useCallback(async (currentFiles: UploadedFile[]) => {
+  const manualRefresh = useCallback((currentFiles: UploadedFile[]) => {
     const processingFiles = currentFiles.filter(f => f.ocrStatus === OcrStatus.PROCESSING || f.ocrStatus === OcrStatus.UPLOADING);
 
     if (processingFiles.length === 0) return;
+
+    if (manualRefreshTimerRef.current) {
+      window.clearTimeout(manualRefreshTimerRef.current);
+      manualRefreshTimerRef.current = null;
+    }
 
     setIsCheckingStatus(true);
 
@@ -269,21 +287,26 @@ export const useOcr = (
         return f.id;
       });
 
-      const batchResult = await ocrService.processBatch(documentIds);
+      // Fire-and-forget: não aguarda resposta HTTP (evita timeout); WS atualizará status/resultados.
+      void ocrService.processBatchFireAndForget(documentIds);
 
-      if (batchResult.processed > 0 || batchResult.errors > 0) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        await Promise.all(
-          documentIds.map(documentId => checkFileStatus(documentId))
-        );
+      // Fallback leve: se WS estiver desconectado, agenda checagem rápida em background.
+      const wsConnected = !!socketRef.current?.connected;
+      if (!wsConnected) {
+        window.setTimeout(() => {
+          void Promise.allSettled(documentIds.map(id => checkFileStatusFast(id)));
+        }, 1000);
       }
     } catch (error) {
       console.error('❌ Erro no refresh manual:', error);
     } finally {
-      setIsCheckingStatus(false);
+      // Feedback rápido no botão, sem bloquear.
+      manualRefreshTimerRef.current = window.setTimeout(() => {
+        setIsCheckingStatus(false);
+        manualRefreshTimerRef.current = null;
+      }, 800);
     }
-  }, [checkFileStatus]);
+  }, [checkFileStatusFast]);
 
   /**
    * Conectar WebSocket e escutar eventos de OCR
@@ -362,6 +385,10 @@ export const useOcr = (
 
     return () => {
       isMounted = false;
+      if (manualRefreshTimerRef.current) {
+        window.clearTimeout(manualRefreshTimerRef.current);
+        manualRefreshTimerRef.current = null;
+      }
       if (socket) {
         console.log('🧹 Desconectando WebSocket');
         socket.disconnect();

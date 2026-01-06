@@ -1,39 +1,80 @@
 import React from 'react';
 import { FileText, Calendar, TrendingUp, CheckCircle2 } from 'lucide-react';
 import type { ConsolidatedChecklist } from '@/types/checklist.types';
-import type { UploadedFile } from '@/types/types';
+import type { DealConfig, UploadedFile } from '@/types/types';
 
 interface ChecklistSummaryProps {
   checklist: ConsolidatedChecklist;
   uploadedFiles: UploadedFile[];
-  numSellers?: number;
-  numBuyers?: number;
+  config: DealConfig;
 }
 
 export const ChecklistSummary: React.FC<ChecklistSummaryProps> = ({ 
   checklist, 
   uploadedFiles,
-  numSellers = 1,
-  numBuyers = 1
+  config
 }) => {
-  // Calcular documentos obrigatórios ÚNICOS (tipos de documentos)
-  const vendedoresDocsObrigatorios = checklist.vendedores.documentos.filter(d => d.obrigatorio).length;
-  const compradoresDocsObrigatorios = checklist.compradores.documentos.filter(d => d.obrigatorio).length;
-  const imovelDocsObrigatorios = checklist.imovel.documentos.filter(d => d.obrigatorio).length;
-  
-  // Total real considerando todas as pessoas
-  // Cada vendedor precisa enviar os mesmos documentos, assim como cada comprador
-  const totalRequired = 
-    (vendedoresDocsObrigatorios * numSellers) + 
-    (compradoresDocsObrigatorios * numBuyers) + 
-    imovelDocsObrigatorios;
+  const fileSatisfiesType = (file: UploadedFile, documentType: string): boolean => {
+    if (file.type === documentType) return true;
+    if (file.types && file.types.includes(documentType)) return true;
+    return false;
+  };
+
+  const deedCountClamped = Math.min(Math.max(config.deedCount || 1, 1), 5);
+
+  // Total necessário e total validado usando a MESMA regra dos blocos (titular x cônjuge + matrícula x deedCount)
+  let totalRequired = 0;
+  let validatedRequired = 0;
+
+  // Vendedores
+  const sellerRequiredDocs = checklist.vendedores.documentos.filter(d => d.obrigatorio);
+  config.sellers.forEach((seller) => {
+    const isSpouse = seller.isSpouse || false;
+    const expectedDe = isSpouse ? 'conjuge' : 'titular';
+    const docsForThisSeller = sellerRequiredDocs.filter(doc => !doc.de || doc.de === expectedDe);
+    const sellerFiles = uploadedFiles.filter(f => f.category === 'sellers' && f.personId === seller.id);
+
+    totalRequired += docsForThisSeller.length;
+    validatedRequired += docsForThisSeller.filter(doc =>
+      sellerFiles.some(f => fileSatisfiesType(f, doc.id) && f.validated === true)
+    ).length;
+  });
+
+  // Compradores
+  const buyerRequiredDocs = checklist.compradores.documentos.filter(d => d.obrigatorio);
+  config.buyers.forEach((buyer) => {
+    const isSpouse = buyer.isSpouse || false;
+    const expectedDe = isSpouse ? 'conjuge' : 'titular';
+    const docsForThisBuyer = buyerRequiredDocs.filter(doc => !doc.de || doc.de === expectedDe);
+    const buyerFiles = uploadedFiles.filter(f => f.category === 'buyers' && f.personId === buyer.id);
+
+    totalRequired += docsForThisBuyer.length;
+    validatedRequired += docsForThisBuyer.filter(doc =>
+      buyerFiles.some(f => fileSatisfiesType(f, doc.id) && f.validated === true)
+    ).length;
+  });
+
+  // Imóvel
+  const propertyRequiredDocs = checklist.imovel.documentos.filter(d => d.obrigatorio);
+  const propertyFiles = uploadedFiles.filter(f => f.category === 'property');
+  propertyRequiredDocs.forEach(doc => {
+    if (doc.id === 'MATRICULA') {
+      totalRequired += deedCountClamped;
+      const validatedCount = propertyFiles.filter(f => fileSatisfiesType(f, doc.id) && f.validated === true).length;
+      validatedRequired += Math.min(validatedCount, deedCountClamped);
+      return;
+    }
+
+    totalRequired += 1;
+    const hasValidated = propertyFiles.some(f => fileSatisfiesType(f, doc.id) && f.validated === true);
+    validatedRequired += hasValidated ? 1 : 0;
+  });
 
   // Calcular documentos enviados e validados
-  const uploadedCount = uploadedFiles.filter(f => f.validated === true).length;
   const pendingCount = uploadedFiles.filter(f => f.validated === undefined).length;
 
   // Calcular progresso (apenas validados)
-  const progress = totalRequired > 0 ? Math.round((uploadedCount / totalRequired) * 100) : 0;
+  const progress = totalRequired > 0 ? Math.round((validatedRequired / totalRequired) * 100) : 0;
 
   // Cor da complexidade
   const getComplexityColor = (complexity: string) => {
@@ -98,7 +139,7 @@ export const ChecklistSummary: React.FC<ChecklistSummaryProps> = ({
               <p className="text-sm text-slate-500">Total Necessário</p>
               <p className="text-2xl font-bold text-slate-800">{totalRequired}</p>
               <p className="text-xs text-slate-400 mt-1">
-                {numSellers}V • {numBuyers}C • 1I
+                {config.sellers.length}V • {config.buyers.length}C • {deedCountClamped}M
               </p>
             </div>
           </div>
@@ -140,7 +181,7 @@ export const ChecklistSummary: React.FC<ChecklistSummaryProps> = ({
             </div>
             <div>
               <p className="text-sm text-slate-500">Validados</p>
-              <p className="text-2xl font-bold text-slate-800">{uploadedCount}/{totalRequired}</p>
+              <p className="text-2xl font-bold text-slate-800">{validatedRequired}/{totalRequired}</p>
               {pendingCount > 0 && (
                 <p className="text-xs text-yellow-600 mt-1">
                   +{pendingCount} validando

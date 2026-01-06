@@ -3,6 +3,7 @@ import { CheckCircle2, XCircle, Clock, Upload, X, Link2, ChevronDown } from 'luc
 import type { UploadedFile } from '@/types/types';
 import { OcrStatusLoader } from './OcrStatusLoader';
 import { OcrStatus } from '@/types/ocr.types';
+import { UtilsService } from '@/services/utils.service';
 
 interface DocumentRequirementItemProps {
 	documentId: string;
@@ -244,7 +245,7 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 											<div className="flex-1 min-w-0">
 												<div className="flex items-center gap-2 flex-wrap">
 													<span className="text-xs font-bold text-slate-600 uppercase bg-white px-2 py-0.5 rounded">
-														{file.types && file.types.length > 1 ? file.types.join(', ') : file.type}
+														{file.types && file.types.length > 1 ? UtilsService.getDocumentTypes(file.types) : UtilsService.getDocumentType(file.type)}
 													</span>
 													{file.types && file.types.length > 1 && (
 														<span className="text-xs text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded">

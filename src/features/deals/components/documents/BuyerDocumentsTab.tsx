@@ -25,7 +25,7 @@ export const BuyerDocumentsTab: React.FC<BuyerDocumentsTabProps> = ({
 	const buyerFiles = uploadedFiles.filter(f => f.category === 'buyers');
 	const [linkingFileId, setLinkingFileId] = useState<string | null>(null);
 	const [linkError, setLinkError] = useState<string | null>(null);
-	
+
 	// Obter documentos da API ou fallback para array vazio
 	const requiredDocuments = checklist?.compradores.documentos || [];
 	const alerts = checklist?.compradores.alertas || [];
@@ -44,7 +44,7 @@ export const BuyerDocumentsTab: React.FC<BuyerDocumentsTabProps> = ({
 
 		const updatedFiles = [...uploadedFiles, ...newFiles];
 		onFilesChange(updatedFiles);
-		
+
 		// A validação agora é automática via OCR quando o processamento completar
 	};
 
@@ -60,7 +60,7 @@ export const BuyerDocumentsTab: React.FC<BuyerDocumentsTabProps> = ({
 			setLinkingFileId(null);
 			return;
 		}
-		
+
 		if (!sourceFile.documentId) {
 			console.error('❌ Arquivo sem documentId:', {
 				fileId: sourceFile.id,
@@ -136,19 +136,15 @@ export const BuyerDocumentsTab: React.FC<BuyerDocumentsTabProps> = ({
 
 			{/* Agrupar documentos por comprador */}
 			{buyers.map((buyer, index) => {
-				// Filtrar documentos deste comprador específico
 				const buyerSpecificFiles = buyerFiles.filter(f => f.personId === buyer.id);
-				
-				// Determinar se é cônjuge para filtrar documentos corretos
+
 				const isSpouse = buyer.isSpouse || false;
 				const expectedDe = isSpouse ? 'conjuge' : 'titular';
-				
-				// Filtrar documentos que pertencem a este tipo de pessoa (titular ou cônjuge)
-				// Se não tiver o campo 'de', incluir (documentos genéricos)
-				const buyerDocuments = requiredDocuments.filter(doc => 
+
+				const buyerDocuments = requiredDocuments.filter(doc =>
 					!doc.de || doc.de === expectedDe
 				);
-				
+
 				// Contar documentos validados deste comprador
 				const validatedCount = buyerDocuments.filter(doc => {
 					const relatedFiles = buyerSpecificFiles.filter(f => f.type === doc.id);

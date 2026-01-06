@@ -44,35 +44,35 @@ export const OcrStatusLoader: React.FC<OcrStatusLoaderProps> = ({
   // Configuração de status
   const statusConfig = {
     idle: {
-      icon: Clock,
+      icon: <Clock className="w-5 h-5" />,
       label: 'Aguardando',
       color: 'text-slate-400',
       bgColor: 'bg-slate-50',
       borderColor: 'border-slate-200',
     },
     uploading: {
-      icon: Upload,
+      icon: <Upload className="w-5 h-5" />,
       label: 'Enviando documento',
       color: 'text-blue-600',
       bgColor: 'bg-blue-50',
       borderColor: 'border-blue-200',
     },
     processing: {
-      icon: Loader2,
+      icon: <span className="w-5 h-5 loading loading-spinner" />,
       label: processingMessages[currentMessageIndex],
       color: 'text-purple-600',
       bgColor: 'bg-purple-50',
       borderColor: 'border-purple-200',
     },
     completed: {
-      icon: CheckCircle2,
+      icon: <CheckCircle2 className="w-5 h-5" />,
       label: 'Documento processado',
       color: 'text-green-600',
       bgColor: 'bg-green-50',
       borderColor: 'border-green-200',
     },
     error: {
-      icon: AlertCircle,
+      icon: <AlertCircle className="w-5 h-5" />,
       label: 'Erro ao processar',
       color: 'text-red-600',
       bgColor: 'bg-red-50',
@@ -82,7 +82,6 @@ export const OcrStatusLoader: React.FC<OcrStatusLoaderProps> = ({
 
   const config = statusConfig[status];
   const Icon = config.icon;
-  const isAnimating = status === 'uploading' || status === 'processing';
 
   return (
     <div
@@ -94,9 +93,7 @@ export const OcrStatusLoader: React.FC<OcrStatusLoaderProps> = ({
       <div className="flex items-start gap-3">
         {/* Ícone com animação */}
         <div className={`flex-shrink-0 ${config.color}`}>
-          <Icon
-            className={`w-5 h-5 ${isAnimating ? 'animate-spin' : ''}`}
-          />
+          {Icon}
         </div>
 
         {/* Conteúdo */}
