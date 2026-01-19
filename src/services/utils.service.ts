@@ -52,9 +52,9 @@ export class UtilsService {
   static getSignerBadge(role: string): { color: string; label: string } {
     switch(role) {
       case 'buyer_part':
-        return { color: 'bg-blue-100 text-blue-700', label: 'Comprador' };
+        return { color: 'bg-green-100 text-green-700', label: 'Comprador' };
       case 'seller_part':
-        return { color: 'bg-green-100 text-green-700', label: 'Vendedor' };
+        return { color: 'bg-blue-100 text-blue-700', label: 'Vendedor' };
       case 'witness':
         return { color: 'bg-yellow-100 text-yellow-700', label: 'Testemunha' };
       case 'real_estate_agent':

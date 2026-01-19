@@ -15,6 +15,50 @@ import { useCreateDeal, useDeal, useUpdateDeal, useSendContract } from './hooks/
 import { ContractSendingLoader } from './components/ContractSendingLoader';
 
 /**
+ * Interface para erros de validação de signatários
+ */
+interface SignatoryValidationError {
+  signatory: Signatory;
+  missingFields: string[];
+}
+
+/**
+ * Valida formato de email
+ */
+const isValidEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+/**
+ * Valida signatários antes do envio
+ * Retorna lista de erros encontrados
+ */
+const validateSignatories = (signatories: Signatory[]): SignatoryValidationError[] => {
+  const errors: SignatoryValidationError[] = [];
+  
+  signatories.forEach(sig => {
+    const missingFields: string[] = [];
+    
+    if (!sig.name || sig.name.trim() === '' || sig.name === 'Sem nome') {
+      missingFields.push('Nome');
+    }
+    
+    if (!sig.email || sig.email.trim() === '') {
+      missingFields.push('Email');
+    } else if (!isValidEmail(sig.email)) {
+      missingFields.push('Email válido');
+    }
+    
+    if (missingFields.length > 0) {
+      errors.push({ signatory: sig, missingFields });
+    }
+  });
+  
+  return errors;
+};
+
+/**
  * Gera ocrData a partir dos arquivos (UploadedFile[])
  */
 const generateOcrDataFromFiles = (files: UploadedFile[]): OcrDataByPerson[] => {
@@ -124,6 +168,7 @@ export const NewDealWizard: React.FC = () => {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isCreatingDeal, setIsCreatingDeal] = useState(false);
   const [isSavingMappings, setIsSavingMappings] = useState(false);
+  const [signatoriesValidationErrors, setSignatoriesValidationErrors] = useState<SignatoryValidationError[]>([]);
 
   const createDealMutation = useCreateDeal();
   const updateDealMutation = useUpdateDeal();
@@ -390,7 +435,12 @@ export const NewDealWizard: React.FC = () => {
       case 4:
         return true;
       case 5:
-        return signatories.length > 0;
+        if (signatories.length === 0) return false;
+        // Validar que todos os signatários têm dados mínimos necessários
+        return signatories.every(sig => 
+          sig.name && sig.name.trim() !== '' && sig.name !== 'Sem nome' &&
+          sig.email && sig.email.trim() !== '' && isValidEmail(sig.email)
+        );
       default:
         return false;
     }
@@ -404,6 +454,9 @@ export const NewDealWizard: React.FC = () => {
 
   const nextStep = async () => {
     if (!isStepValid(step)) return;
+
+    // Limpar erros de validação ao mudar de step
+    setSignatoriesValidationErrors([]);
 
     if (step === 1 && !dealId && !editDealId) {
       setIsCreatingDeal(true);
@@ -519,6 +572,8 @@ export const NewDealWizard: React.FC = () => {
   }
 
   const prevStep = () => {
+    // Limpar erros de validação ao mudar de step
+    setSignatoriesValidationErrors([]);
     setDirection(-1);
     setStep(step => Math.max(step - 1, 1));
     setStepAndNavigate(step - 1);
@@ -585,6 +640,18 @@ export const NewDealWizard: React.FC = () => {
   const handleFinish = async () => {
     if (!isStepValid(step) || !dealId) return;
 
+    // VALIDAÇÃO CLIENT-SIDE - Antes de enviar ao servidor
+    const validationErrors = validateSignatories(signatories);
+    
+    if (validationErrors.length > 0) {
+      setSignatoriesValidationErrors(validationErrors);
+      setSaveError('Alguns signatários estão com informações incompletas. Por favor, revise os dados antes de enviar.');
+      setTimeout(() => setSaveError(null), 8000);
+      return; // NÃO prosseguir com envio
+    }
+
+    // Limpar erros de validação antes de continuar
+    setSignatoriesValidationErrors([]);
     setSubmissionStatus('sending');
 
     try {
@@ -854,8 +921,20 @@ export const NewDealWizard: React.FC = () => {
               {step === 5 && (
                 <SignatoriesStep
                   signatories={signatories}
-                  onChange={setSignatories}
+                  onChange={(updatedSignatories) => {
+                    setSignatories(updatedSignatories);
+                    // Limpar erros de validação quando signatários forem editados
+                    if (signatoriesValidationErrors.length > 0) {
+                      setSignatoriesValidationErrors([]);
+                    }
+                  }}
                   dealId={dealId}
+                  validationErrors={signatoriesValidationErrors}
+                  onGoToStep={(targetStep) => {
+                    setSignatoriesValidationErrors([]);
+                    setDirection(-1);
+                    setStepAndNavigate(targetStep);
+                  }}
                 />
               )}
             </motion.div>

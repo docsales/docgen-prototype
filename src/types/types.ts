@@ -19,6 +19,7 @@ export interface Deal {
   metadata?: any;
   contractModel?: string;
   contractFields?: any;
+  preMappings?: any;
   expirationDate?: string;
   createdAt: string;
   updatedAt: string;
