@@ -36,6 +36,15 @@ interface MappingStepProps {
   dealId: string;
   ocrData?: OcrDataByPerson[];
   files?: UploadedFile[]; // Arquivos com document_type preservado
+  mappingStepCache?: MappingStepCache | null;
+  onMappingStepCacheChange?: (cache: MappingStepCache | null) => void;
+}
+
+export interface MappingStepCache {
+  dealId: string;
+  hasLoadedOnce: boolean;
+  templateVariables: string[];
+  preMappedFields: string[];
 }
 
 interface GroupedVariable {
@@ -404,6 +413,8 @@ const categorizeVariables = (
   const dealVars: GroupedVariable[] = [];
   const otherVars: GroupedVariable[] = [];
 
+  const customFieldAlias = 'custom.';
+
   variables.forEach(variable => {
     // Extrair prefixo e resto (suporta formatos antigos e novos)
     // Novo (schema atual): buyers.1.nome / sellers.1.nome (índice começa em 1)
@@ -488,7 +499,8 @@ const categorizeVariables = (
         label: formatFieldLabel(fieldName)
       });
     } else if (variable.startsWith('buyers.') || variable.startsWith('sellers.')) {
-      // Caso raro: buyers.<algo> sem índice válido, cai em outros para não perder visibilidade
+      if (!variable.startsWith(customFieldAlias)) return;
+
       otherVars.push({
         fullKey: variable,
         fieldName: variable,
@@ -509,11 +521,12 @@ const categorizeVariables = (
         label: formatFieldLabel(fieldName)
       });
     } else {
-      // Fallback para outros formatos antigos
       const parts = variable.split('.');
       if (parts.length > 1) {
         const [prefix, ...rest] = parts;
         const fieldName = rest.join('.');
+
+        if (!fieldName.startsWith(customFieldAlias)) return;
 
         if (prefix === 'buyer' || prefix === 'buyers') {
           if (!buyerVars[0]) buyerVars[0] = [];
@@ -540,8 +553,6 @@ const categorizeVariables = (
     }
   });
 
-  // Se houver OCR de compradores/vendedores, manter os blocos visíveis mesmo sem variáveis do template
-  // (ajuda o usuário a entender que não há campos mapeáveis daquela pessoa neste template)
   const buyerOcrGroups = ocrGroups.filter(g => g.role === 'buyer' && typeof g.index === 'number');
   const sellerOcrGroups = ocrGroups.filter(g => g.role === 'seller' && typeof g.index === 'number');
 
@@ -640,17 +651,30 @@ export const MappingStep: React.FC<MappingStepProps> = ({
   dealConfig,
   dealId,
   ocrData,
-  files
+  files,
+  mappingStepCache,
+  onMappingStepCacheChange,
 }) => {
   const [isLoadingVariables, setIsLoadingVariables] = useState(false);
   const [isRefreshingVariables, setIsRefreshingVariables] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [loaderStage, setLoaderStage] = useState<'fetching' | 'mapping' | 'applying'>('fetching');
   const [variablesError, setVariablesError] = useState<string | null>(null);
-  const [templateVariables, setTemplateVariables] = useState<string[]>([]);
   const [activeDropZone, setActiveDropZone] = useState<string | null>(null);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const [preMappedFields, setPreMappedFields] = useState<Set<string>>(new Set());
+
+  const cacheValidForThisDeal =
+    !!mappingStepCache &&
+    mappingStepCache.dealId === dealId &&
+    mappingStepCache.hasLoadedOnce === true;
+
+  const [templateVariables, setTemplateVariables] = useState<string[]>(
+    () => (cacheValidForThisDeal ? mappingStepCache!.templateVariables || [] : [])
+  );
+  const [hasLoadedOnce, setHasLoadedOnce] = useState<boolean>(() => cacheValidForThisDeal);
+  const [preMappedFields, setPreMappedFields] = useState<Set<string>>(
+    () => (cacheValidForThisDeal ? new Set(mappingStepCache!.preMappedFields || []) : new Set())
+  );
+
   const [expandedOcrItem, setExpandedOcrItem] = useState<{
     fullKey: string;
     key: string;
@@ -659,7 +683,20 @@ export const MappingStep: React.FC<MappingStepProps> = ({
   const [hasCopiedExpanded, setHasCopiedExpanded] = useState(false);
   const [isAiBannerExpanded, setIsAiBannerExpanded] = useState(false);
 
-  // Agrupar dados por pessoa - usa files se disponível, senão ocrData
+  // Persistir cache no componente pai para evitar refetch ao reabrir o Step 3
+  useEffect(() => {
+    if (!onMappingStepCacheChange) return;
+    if (!dealId) return;
+    if (!hasLoadedOnce) return;
+
+    onMappingStepCacheChange({
+      dealId,
+      hasLoadedOnce: true,
+      templateVariables,
+      preMappedFields: Array.from(preMappedFields),
+    });
+  }, [dealId, hasLoadedOnce, templateVariables, preMappedFields, onMappingStepCacheChange]);
+
   const ocrPersonGroups = React.useMemo(() => {
     if (files && files.length > 0) {
       return groupFilesByPerson(files, dealConfig);
@@ -669,7 +706,6 @@ export const MappingStep: React.FC<MappingStepProps> = ({
     }
   }, [files, ocrData, dealConfig]);
 
-  // Categorizar variáveis usando a nova estrutura de 4 categorias
   const categorizedVariables: CategoryGroup[] = React.useMemo(() => {
     return categorizeVariables(templateVariables, ocrPersonGroups);
   }, [templateVariables, ocrPersonGroups]);
@@ -1250,33 +1286,29 @@ export const MappingStep: React.FC<MappingStepProps> = ({
             </div>
 
             {/* Botões de ação */}
-            {hasLoadedOnce && !isLoadingVariables && (
-              <div className="flex items-center gap-3">
-                {/* Botão de re-processar pré-mapeamentos */}
-                {preMappedFields.size > 0 && (
-                  <button
-                    onClick={handleReprocessPreMappings}
-                    disabled={isReprocessing}
-                    className="cursor-pointer flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-purple-700 bg-gradient-to-r from-purple-50 to-pink-50 hover:from-purple-100 hover:to-pink-100 border border-purple-300 rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Re-processar pré-mapeamentos com IA"
-                  >
-                    <RotateCcw className={`w-4 h-4 ${isReprocessing ? 'animate-spin' : ''}`} />
-                    {isReprocessing ? 'Re-processando...' : 'Re-processar IA'}
-                  </button>
-                )}
+            <div className="flex items-center gap-3">
+              {/* Botão de re-processar pré-mapeamentos (sempre visível) */}
+              <button
+                onClick={handleReprocessPreMappings}
+                disabled={isLoadingVariables || isReprocessing}
+                className="cursor-pointer flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-purple-700 bg-gradient-to-r from-purple-50 to-pink-50 hover:from-purple-100 hover:to-pink-100 border border-purple-300 rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Re-processar pré-mapeamentos com IA"
+              >
+                <RotateCcw className={`w-4 h-4 ${isReprocessing ? 'animate-spin' : ''}`} />
+                {isReprocessing ? 'Re-processando...' : 'Re-processar IA'}
+              </button>
 
-                {/* Botão de refresh variáveis */}
-                <button
-                  onClick={handleRefreshVariables}
-                  disabled={isRefreshingVariables}
-                  className="cursor-pointer flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Atualizar variáveis do template"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isRefreshingVariables ? 'animate-spin' : ''}`} />
-                  {isRefreshingVariables ? 'Atualizando...' : 'Atualizar'}
-                </button>
-              </div>
-            )}
+              {/* Botão de refresh variáveis (ação manual) */}
+              <button
+                onClick={handleRefreshVariables}
+                disabled={isLoadingVariables || isRefreshingVariables}
+                className="cursor-pointer flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Atualizar variáveis do template"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshingVariables ? 'animate-spin' : ''}`} />
+                {isRefreshingVariables ? 'Atualizando...' : 'Atualizar'}
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 pb-4 scrollbar-hide">

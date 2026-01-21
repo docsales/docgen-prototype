@@ -8,7 +8,7 @@ import type { DealConfig, Signatory, UploadedFile, MappingValue, OcrDataByPerson
 import { createDefaultPerson } from '@/types/types';
 import { ConfigStep } from './steps/ConfigStep';
 import { DocumentsStep } from './steps/DocumentsStep';
-import { MappingStep } from './steps/MappingStep';
+import { MappingStep, type MappingStepCache } from './steps/MappingStep';
 import { PreviewStep } from './steps/PreviewStep';
 import { SignatoriesStep } from './steps/SignatoriesStep';
 import { useCreateDeal, useDeal, useUpdateDeal, useSendContract } from './hooks/useDeals';
@@ -196,10 +196,16 @@ export const NewDealWizard: React.FC = () => {
   const [mappings, setMappings] = useState<Record<string, MappingValue>>({});
   const [signatories, setSignatories] = useState<Signatory[]>([]);
   const [ocrData, setOcrData] = useState<OcrDataByPerson[]>([]);
+  const [mappingStepCache, setMappingStepCache] = useState<MappingStepCache | null>(null);
   const [documentsGate, setDocumentsGate] = useState<{ canContinue: boolean; message: string }>({
     canContinue: false,
     message: 'Carregando checklist de documentos...',
   });
+
+  // Se o usuário alterar documentos/ocrData, invalidar cache do Step 3
+  useEffect(() => {
+    setMappingStepCache(null);
+  }, [dealId, documents, ocrData]);
 
   useEffect(() => {
     if (existingDeal && editDealId) {
@@ -908,6 +914,8 @@ export const NewDealWizard: React.FC = () => {
                   dealConfig={configData}
                   ocrData={ocrData}
                   files={documents}
+                  mappingStepCache={mappingStepCache}
+                  onMappingStepCacheChange={setMappingStepCache}
                 />
               )}
               {step === 4 && (
