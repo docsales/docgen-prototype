@@ -2,19 +2,21 @@ import React from 'react';
 import { Plus, Users } from 'lucide-react';
 import { PersonForm } from './PersonForm';
 import type { Person } from '@/types/types';
-import { createDefaultPerson } from '@/types/types';
+import { createDefaultPerson, generateCoupleId } from '@/types/types';
 import { Button } from '@/components/Button';
 
 interface PersonListProps {
   title: string;
   people: Person[];
   onChange: (people: Person[]) => void;
+  role?: 'buyers' | 'sellers'; // Contexto para melhorar labels
 }
 
 export const PersonList: React.FC<PersonListProps> = ({
   title,
   people,
   onChange,
+  role,
 }) => {
   const handlePersonChange = (index: number, updatedPerson: Person) => {
     const newPeople = [...people];
@@ -32,18 +34,37 @@ export const PersonList: React.FC<PersonListProps> = ({
       oldMaritalState !== 'casado' &&
       oldMaritalState !== 'uniao_estavel'
     ) {
-      // Verifica se já existe um cônjuge para esta pessoa
+      // Verifica se já existe um cônjuge para esta pessoa (usando coupleId)
       const hasSpouse = newPeople.some((p, idx) => 
-        idx !== index && p.isSpouse && !updatedPerson.isSpouse
+        idx !== index && 
+        p.coupleId && 
+        p.coupleId === updatedPerson.coupleId &&
+        p.isSpouse
       );
       
       // Se não existe cônjuge, adiciona automaticamente
       if (!hasSpouse && !updatedPerson.isSpouse) {
+        // Gerar ou usar coupleId existente
+        const coupleId = updatedPerson.coupleId || generateCoupleId();
+        updatedPerson.coupleId = coupleId;
+        
         const spouse = createDefaultPerson();
         spouse.isSpouse = true;
+        spouse.coupleId = coupleId; // Mesmo ID compartilhado
         spouse.maritalState = newMaritalState;
         spouse.propertyRegime = updatedPerson.propertyRegime || 'comunhao_parcial';
         newPeople.splice(index + 1, 0, spouse);
+      } else if (!updatedPerson.coupleId) {
+        // Se já tem cônjuge mas não tem coupleId, gerar um
+        const coupleId = generateCoupleId();
+        updatedPerson.coupleId = coupleId;
+        // Atualizar o cônjuge existente também
+        const spouseIndex = newPeople.findIndex((p, idx) => 
+          idx !== index && p.isSpouse && !p.coupleId
+        );
+        if (spouseIndex !== -1) {
+          newPeople[spouseIndex].coupleId = coupleId;
+        }
       }
     }
     
@@ -55,23 +76,35 @@ export const PersonList: React.FC<PersonListProps> = ({
       newMaritalState !== 'uniao_estavel' &&
       !updatedPerson.isSpouse
     ) {
-      // Remove o cônjuge associado (próxima pessoa se for cônjuge)
-      const spouseIndex = index + 1;
-      if (spouseIndex < newPeople.length && newPeople[spouseIndex].isSpouse) {
-        newPeople.splice(spouseIndex, 1);
+      // Remove o cônjuge associado usando coupleId
+      if (updatedPerson.coupleId) {
+        const spouseIndex = newPeople.findIndex((p, idx) => 
+          idx !== index && 
+          p.coupleId === updatedPerson.coupleId &&
+          p.isSpouse
+        );
+        if (spouseIndex !== -1) {
+          newPeople[spouseIndex].coupleId = undefined;
+          newPeople.splice(spouseIndex, 1);
+        }
       }
+      // Limpar coupleId do titular
+      updatedPerson.coupleId = undefined;
     }
     
-    // Sincroniza o regime de bens entre pessoa e cônjuge
+    // Sincroniza o regime de bens entre pessoa e cônjuge usando coupleId
     if (
       updatedPerson.personType === 'PF' &&
       (newMaritalState === 'casado' || newMaritalState === 'uniao_estavel') &&
-      updatedPerson.propertyRegime !== oldPerson.propertyRegime
+      updatedPerson.propertyRegime !== oldPerson.propertyRegime &&
+      updatedPerson.coupleId
     ) {
-      // Encontra o cônjuge
-      const spouseIndex = updatedPerson.isSpouse 
-        ? newPeople.findIndex((p, idx) => idx !== index && !p.isSpouse && (p.maritalState === 'casado' || p.maritalState === 'uniao_estavel'))
-        : newPeople.findIndex((p, idx) => idx !== index && p.isSpouse);
+      // Encontra o cônjuge usando coupleId
+      const spouseIndex = newPeople.findIndex((p, idx) => 
+        idx !== index && 
+        p.coupleId === updatedPerson.coupleId &&
+        p.isSpouse !== updatedPerson.isSpouse
+      );
       
       // Atualiza o regime de bens do cônjuge se encontrado
       if (spouseIndex !== -1) {
@@ -91,31 +124,39 @@ export const PersonList: React.FC<PersonListProps> = ({
 
   const handleRemovePerson = (index: number) => {
     if (people.length > 1) {
-      onChange(people.filter((_, i) => i !== index));
+      const personToRemove = people[index];
+      const newPeople = people.filter((_, i) => i !== index);
+      
+      // Se a pessoa removida tem coupleId, limpar o coupleId do cônjuge
+      if (personToRemove.coupleId) {
+        const spouseIndex = newPeople.findIndex(p => 
+          p.coupleId === personToRemove.coupleId &&
+          p.id !== personToRemove.id
+        );
+        if (spouseIndex !== -1) {
+          newPeople[spouseIndex].coupleId = undefined;
+          // Se o cônjuge não tem mais razão para existir, removê-lo também
+          if (newPeople[spouseIndex].isSpouse) {
+            const spouse = newPeople[spouseIndex];
+            if (spouse.maritalState !== 'casado' && spouse.maritalState !== 'uniao_estavel') {
+              newPeople.splice(spouseIndex, 1);
+            }
+          }
+        }
+      }
+      
+      onChange(newPeople);
     }
   };
 
   // Check if there are multiple people to show spouse option
   const showSpouseOption = people.length > 1;
 
-  // Verifica se todas as pessoas casadas/união estável já têm cônjuge
-  const hasMarriedWithoutSpouse = people.some((person, idx) => {
-    if (person.personType === 'PF' && 
-        !person.isSpouse && 
-        (person.maritalState === 'casado' || person.maritalState === 'uniao_estavel')) {
-      // Verifica se existe um cônjuge logo após ou em qualquer lugar da lista
-      const hasCorrespondingSpouse = people.some((p, pIdx) => 
-        pIdx !== idx && p.isSpouse && p.personType === 'PF'
-      );
-      return !hasCorrespondingSpouse;
-    }
-    return false;
-  });
-
-  // Mostra o botão adicionar apenas se:
-  // 1. Não existe nenhum cônjuge na lista, OU
-  // 2. Existe alguém casado/união estável sem cônjuge
-  const showAddButton = !people.some(p => p.isSpouse) || hasMarriedWithoutSpouse;
+  // Sempre permitir adicionar pessoas para suportar:
+  // - Múltiplos casais
+  // - Pessoas solteiras junto com casais
+  // A gestão de cônjuges continua funcionando automaticamente
+  const showAddButton = true;
 
   return (
     <div className="space-y-4">
@@ -149,6 +190,8 @@ export const PersonList: React.FC<PersonListProps> = ({
             index={index}
             canRemove={people.length > 1}
             showSpouseOption={showSpouseOption}
+            allPeople={people}
+            role={role}
             onChange={(updated) => handlePersonChange(index, updated)}
             onRemove={() => handleRemovePerson(index)}
           />

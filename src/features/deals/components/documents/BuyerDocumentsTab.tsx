@@ -1,11 +1,13 @@
-import { useState } from 'react';
-import { Users, AlertCircle, X } from 'lucide-react';
+import { useState, useMemo, type ReactElement } from 'react';
+import { Users, AlertCircle, X, Heart } from 'lucide-react';
 import type { Person, UploadedFile } from '@/types/types';
 import { DocumentRequirementItem } from './DocumentRequirementItem';
 import { AlertBanner } from './AlertBanner';
+import { CoupleValidationBanner } from './CoupleValidationBanner';
 import type { ConsolidatedChecklist } from '@/types/checklist.types';
 import { generateFileId } from '@/utils/generateFileId';
 import { ocrService } from '@/services/ocr.service';
+import { getCoupleMembers } from '@/types/types';
 
 interface BuyerDocumentsTabProps {
 	buyers: Person[];
@@ -13,6 +15,9 @@ interface BuyerDocumentsTabProps {
 	onFilesChange: (files: UploadedFile[]) => void;
 	onRemoveFile: (fileId: string) => void;
 	checklist: ConsolidatedChecklist | null;
+	dealId?: string | null;
+	coupleValidations?: Map<string, any>;
+	validatingCouples?: Set<string>;
 }
 
 export const BuyerDocumentsTab: React.FC<BuyerDocumentsTabProps> = ({
@@ -20,7 +25,10 @@ export const BuyerDocumentsTab: React.FC<BuyerDocumentsTabProps> = ({
 	uploadedFiles,
 	onFilesChange,
 	onRemoveFile,
-	checklist
+	checklist,
+	dealId,
+	coupleValidations = new Map(),
+	validatingCouples = new Set(),
 }) => {
 	const buyerFiles = uploadedFiles.filter(f => f.category === 'buyers');
 	const [linkingFileId, setLinkingFileId] = useState<string | null>(null);
@@ -134,74 +142,178 @@ export const BuyerDocumentsTab: React.FC<BuyerDocumentsTabProps> = ({
 				<AlertBanner alerts={alerts} />
 			)}
 
-			{/* Agrupar documentos por comprador */}
-			{buyers.map((buyer, index) => {
-				const buyerSpecificFiles = buyerFiles.filter(f => f.personId === buyer.id);
+			{/* Agrupar documentos por comprador/casal */}
+			{useMemo(() => {
+				// Agrupar compradores por casal
+				const processedCouples = new Set<string>();
+				const result: ReactElement[] = [];
+				let displayIndex = 0;
 
-				const isSpouse = buyer.isSpouse || false;
-				const expectedDe = isSpouse ? 'conjuge' : 'titular';
+				buyers.forEach((buyer, _) => {
+					// Se já processamos este casal, pular
+					if (buyer.coupleId && processedCouples.has(buyer.coupleId)) {
+						return;
+					}
 
-				const buyerDocuments = requiredDocuments.filter(doc =>
-					!doc.de || doc.de === expectedDe
-				);
+					// Se tem coupleId, processar todo o casal
+					if (buyer.coupleId) {
+						processedCouples.add(buyer.coupleId);
+						const coupleMembers = getCoupleMembers(buyer.coupleId, buyers);
+						const titular = coupleMembers.find(m => !m.isSpouse);
+						const conjuge = coupleMembers.find(m => m.isSpouse);
+						
+						coupleMembers.forEach((member) => {
+							const buyerSpecificFiles = buyerFiles.filter(f => f.personId === member.id);
+							const isSpouse = member.isSpouse || false;
+							const expectedDe = isSpouse ? 'conjuge' : 'titular';
+							const buyerDocuments = requiredDocuments.filter(doc =>
+								!doc.de || doc.de === expectedDe
+							);
+							const validatedCount = buyerDocuments.filter(doc => {
+								const relatedFiles = buyerSpecificFiles.filter(f => f.type === doc.id);
+								return relatedFiles.length > 0 && relatedFiles.every(f => f.validated === true);
+							}).length;
 
-				// Contar documentos validados deste comprador
-				const validatedCount = buyerDocuments.filter(doc => {
-					const relatedFiles = buyerSpecificFiles.filter(f => f.type === doc.id);
-					return relatedFiles.length > 0 && relatedFiles.every(f => f.validated === true);
-				}).length;
-
-				return (
-					<div key={buyer.id} className="space-y-4 border-b-2 border-slate-100 last:border-b-0">
-						{/* Header do comprador */}
-						<div className="bg-gradient-to-r from-green-50 to-green-100 px-4 py-3 rounded-lg border border-green-200 shadow-sm">
-							<div className="flex items-center justify-between">
-								<div>
-									<h4 className="font-bold text-green-900 text-lg">
-										Comprador {index + 1}
-									</h4>
-									<p className="text-sm text-green-700 mt-1">
-										{buyer.personType === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'}
-										{buyer.maritalState && ` • ${buyer.maritalState.replace('_', ' ')}`}
-									</p>
-								</div>
-								<div className="text-right">
-									<div className="text-2xl font-bold text-green-900">
-										{validatedCount}/{buyerDocuments.length}
+							result.push(
+								<div key={member.id} className="space-y-4 border-b-2 border-slate-100 last:border-b-0">
+									{/* Header do comprador */}
+									<div className={`bg-gradient-to-r ${member.coupleId ? 'from-pink-50 to-pink-100 border-pink-200' : 'from-green-50 to-green-100 border-green-200'} px-4 py-3 rounded-lg border shadow-sm`}>
+										<div className="flex items-center justify-between">
+											<div className="flex items-center gap-2">
+												{member.coupleId && (
+													<Heart className="w-4 h-4 text-pink-600" />
+												)}
+												<div>
+													<h4 className={`font-bold text-lg ${member.coupleId ? 'text-pink-900' : 'text-green-900'}`}>
+														Comprador {++displayIndex} {member.isSpouse ? '(Cônjuge)' : ''}
+													</h4>
+													<p className={`text-sm mt-1 ${member.coupleId ? 'text-pink-700' : 'text-green-700'}`}>
+														{member.personType === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'}
+														{member.maritalState && ` • ${member.maritalState.replace('_', ' ')}`}
+													</p>
+												</div>
+											</div>
+											<div className="text-right">
+												<div className={`text-2xl font-bold ${member.coupleId ? 'text-pink-900' : 'text-green-900'}`}>
+													{validatedCount}/{buyerDocuments.length}
+												</div>
+												<div className={`text-xs ${member.coupleId ? 'text-pink-700' : 'text-green-700'}`}>documentos</div>
+											</div>
+										</div>
 									</div>
-									<div className="text-xs text-green-700">documentos</div>
+
+									{/* Documentos obrigatórios deste comprador */}
+									<div className="space-y-3 pl-2">
+										{buyerDocuments.length > 0 ? (
+											buyerDocuments.map((doc) => (
+												<DocumentRequirementItem
+													key={`${doc.id}_${doc.de || 'generic'}_${member.id}`}
+													documentId={doc.id}
+													documentName={doc.nome}
+													description={doc.observacao}
+													uploadedFiles={buyerSpecificFiles}
+													allFiles={buyerFiles}
+													onFileUpload={handleFileUpload}
+													onRemoveFile={onRemoveFile}
+													onLinkExistingFile={handleLinkExistingFile}
+													personId={member.id}
+													linkingFileId={linkingFileId}
+												/>
+											))
+										) : (
+											<div className="text-center py-12 text-slate-500">
+												<span className="loading loading-spinner loading-lg w-12 h-12 text-[#ef0474] mx-auto mb-4"></span>
+												<p className="text-sm text-slate-500">Carregando documentos necessários...</p>
+											</div>
+										)}
+									</div>
+								</div>
+							);
+						});
+
+						// Adicionar banner de validação de casal após processar todos os membros
+						if (dealId && titular && conjuge) {
+							result.push(
+								<div key={`validation-${buyer.coupleId}`} className="mb-4">
+									<CoupleValidationBanner
+										dealId={dealId}
+										coupleId={buyer.coupleId}
+										titularPersonId={titular.id}
+										conjugePersonId={conjuge.id}
+									/>
+								</div>
+							);
+						}
+
+						return; // Sair do loop após processar o casal
+					} else {
+						// Processar comprador solteiro
+						const buyerSpecificFiles = buyerFiles.filter(f => f.personId === buyer.id);
+						const isSpouse = buyer.isSpouse || false;
+						const expectedDe = isSpouse ? 'conjuge' : 'titular';
+						const buyerDocuments = requiredDocuments.filter(doc =>
+							!doc.de || doc.de === expectedDe
+						);
+						const validatedCount = buyerDocuments.filter(doc => {
+							const relatedFiles = buyerSpecificFiles.filter(f => f.type === doc.id);
+							return relatedFiles.length > 0 && relatedFiles.every(f => f.validated === true);
+						}).length;
+
+						result.push(
+							<div key={buyer.id} className="space-y-4 border-b-2 border-slate-100 last:border-b-0">
+								{/* Header do comprador */}
+								<div className="bg-gradient-to-r from-green-50 to-green-100 px-4 py-3 rounded-lg border border-green-200 shadow-sm">
+									<div className="flex items-center justify-between">
+										<div>
+											<h4 className="font-bold text-green-900 text-lg">
+												Comprador {++displayIndex}
+											</h4>
+											<p className="text-sm text-green-700 mt-1">
+												{buyer.personType === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'}
+												{buyer.maritalState && ` • ${buyer.maritalState.replace('_', ' ')}`}
+											</p>
+										</div>
+										<div className="text-right">
+											<div className="text-2xl font-bold text-green-900">
+												{validatedCount}/{buyerDocuments.length}
+											</div>
+											<div className="text-xs text-green-700">documentos</div>
+										</div>
+									</div>
+								</div>
+
+								{/* Documentos obrigatórios deste comprador */}
+								<div className="space-y-3 pl-2">
+									{buyerDocuments.length > 0 ? (
+										buyerDocuments.map((doc) => (
+											<DocumentRequirementItem
+												key={`${doc.id}_${doc.de || 'generic'}_${buyer.id}`}
+												documentId={doc.id}
+												documentName={doc.nome}
+												description={doc.observacao}
+												uploadedFiles={buyerSpecificFiles}
+												allFiles={buyerFiles}
+												onFileUpload={handleFileUpload}
+												onRemoveFile={onRemoveFile}
+												onLinkExistingFile={handleLinkExistingFile}
+												personId={buyer.id}
+												linkingFileId={linkingFileId}
+											/>
+										))
+									) : (
+										<div className="text-center py-12 text-slate-500">
+											<span className="loading loading-spinner loading-lg w-12 h-12 text-[#ef0474] mx-auto mb-4"></span>
+											<p className="text-sm text-slate-500">Carregando documentos necessários...</p>
+										</div>
+									)}
 								</div>
 							</div>
-						</div>
+						);
+					}
+				});
 
-						{/* Documentos obrigatórios deste comprador */}
-						<div className="space-y-3 pl-2">
-							{buyerDocuments.length > 0 ? (
-								buyerDocuments.map((doc) => (
-									<DocumentRequirementItem
-										key={`${doc.id}_${doc.de || 'generic'}_${buyer.id}`}
-										documentId={doc.id}
-										documentName={doc.nome}
-										description={doc.observacao}
-										uploadedFiles={buyerSpecificFiles}
-										allFiles={buyerFiles}
-										onFileUpload={handleFileUpload}
-										onRemoveFile={onRemoveFile}
-										onLinkExistingFile={handleLinkExistingFile}
-										personId={buyer.id}
-										linkingFileId={linkingFileId}
-									/>
-								))
-							) : (
-								<div className="text-center py-12 text-slate-500">
-									<span className="loading loading-spinner loading-lg w-12 h-12 text-[#ef0474] mx-auto mb-4"></span>
-									<p className="text-sm text-slate-500">Carregando documentos necessários...</p>
-								</div>
-							)}
-						</div>
-					</div>
-				);
-			})}
+				return result;
+			}, [buyers, buyerFiles, requiredDocuments, linkingFileId, handleFileUpload, onRemoveFile, handleLinkExistingFile, dealId])}
 
 			{buyers.length === 0 && (
 				<div className="text-center py-8 text-slate-500">

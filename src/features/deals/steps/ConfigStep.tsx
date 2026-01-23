@@ -503,6 +503,7 @@ export const ConfigStep: React.FC<ConfigStepProps> = ({ data, onChange }) => {
 							<PersonList
 								title="Vendedores"
 								people={data.sellers || []}
+								role="sellers"
 								onChange={(s) => {
 									handleSellersChange(s);
 								}}
@@ -516,6 +517,7 @@ export const ConfigStep: React.FC<ConfigStepProps> = ({ data, onChange }) => {
 							<PersonList
 								title="Compradores"
 								people={data.buyers || []}
+								role="buyers"
 								onChange={(b) => {
 									handleBuyersChange(b);
 								}}

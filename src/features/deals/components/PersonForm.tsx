@@ -1,6 +1,7 @@
 import React from 'react';
-import { Trash2, User, Building2 } from 'lucide-react';
+import { Trash2, User, Building2, Heart } from 'lucide-react';
 import type { Person, PersonType, MaritalState, PropertyRegime } from '@/types/types';
+import { generateCoupleId, getSpouse } from '@/types/types';
 
 interface PersonFormProps {
   person: Person;
@@ -9,6 +10,8 @@ interface PersonFormProps {
   showSpouseOption: boolean;
   onChange: (person: Person) => void;
   onRemove: () => void;
+  allPeople?: Person[]; // Para permitir seleção de titular quando é cônjuge
+  role?: 'buyers' | 'sellers'; // Contexto para melhorar labels
 }
 
 const PERSON_TYPE_OPTIONS: { value: PersonType; label: string }[] = [
@@ -41,6 +44,8 @@ export const PersonForm: React.FC<PersonFormProps> = ({
   showSpouseOption,
   onChange,
   onRemove,
+  allPeople = [],
+  role,
 }) => {
   const isPF = person.personType === 'PF';
   const isCasado = person.maritalState === 'casado';
@@ -56,6 +61,7 @@ export const PersonForm: React.FC<PersonFormProps> = ({
       updated.maritalState = undefined;
       updated.propertyRegime = undefined;
       updated.isSpouse = false;
+      updated.coupleId = undefined;
     }
 
     // Set default propertyRegime when maritalState becomes casado/uniao_estavel
@@ -70,7 +76,56 @@ export const PersonForm: React.FC<PersonFormProps> = ({
       updated.propertyRegime = undefined;
     }
 
+    // Gerenciar coupleId quando isSpouse muda
+    if (field === 'isSpouse') {
+      if (value === true) {
+        // Se marcou como cônjuge, precisa de um coupleId
+        // Se não tem coupleId, será gerado no PersonList
+        if (!updated.coupleId) {
+          // Tentar encontrar um titular disponível para vincular
+          const availableTitular = allPeople.find((p, idx) => 
+            idx !== index &&
+            !p.isSpouse &&
+            (p.maritalState === 'casado' || p.maritalState === 'uniao_estavel') &&
+            !p.coupleId
+          );
+          if (availableTitular) {
+            updated.coupleId = availableTitular.coupleId || generateCoupleId();
+          } else {
+            updated.coupleId = generateCoupleId();
+          }
+        }
+      } else {
+        // Se desmarcou como cônjuge, limpar coupleId
+        updated.coupleId = undefined;
+      }
+    }
+
     onChange(updated);
+  };
+
+  // Obter o cônjuge se existir
+  const spouse = person.coupleId ? getSpouse(person, allPeople) : undefined;
+  
+  // Obter titulares disponíveis para seleção (quando é cônjuge)
+  const availableTitulars = allPeople.filter((p, idx) => 
+    idx !== index &&
+    !p.isSpouse &&
+    (p.maritalState === 'casado' || p.maritalState === 'uniao_estavel')
+  );
+
+  const handleTitularChange = (titularId: string) => {
+    const selectedTitular = allPeople.find(p => p.id === titularId);
+    if (selectedTitular) {
+      const coupleId = selectedTitular.coupleId || generateCoupleId();
+      // Atualizar o titular também se não tiver coupleId
+      if (!selectedTitular.coupleId) {
+        onChange({ ...person, coupleId: coupleId });
+        // Nota: A atualização do titular será feita no PersonList
+      } else {
+        onChange({ ...person, coupleId: selectedTitular.coupleId });
+      }
+    }
   };
 
   return (
@@ -85,11 +140,20 @@ export const PersonForm: React.FC<PersonFormProps> = ({
                 : 'bg-purple-50 text-purple-600 border border-purple-200'
             }`}>
               {isPF ? <User className="w-3 h-3" /> : <Building2 className="w-3 h-3" />}
-              <span>Pessoa {index + 1}</span>
+              <span>
+                {role === 'buyers' ? 'Comprador' : role === 'sellers' ? 'Vendedor' : 'Pessoa'} {index + 1}
+              </span>
             </div>
             {person.isSpouse && (
-              <div className="px-2 py-1 rounded text-xs font-medium bg-accent/10 text-accent border border-accent/20">
+              <div className="px-2 py-1 rounded text-xs font-medium bg-accent/10 text-accent border border-accent/20 flex items-center gap-1">
+                <Heart className="w-3 h-3" />
                 Cônjuge
+              </div>
+            )}
+            {person.coupleId && spouse && (
+              <div className="px-2 py-1 rounded text-xs font-medium bg-pink-50 text-pink-700 border border-pink-200 flex items-center gap-1">
+                <Heart className="w-3 h-3" />
+                Casal
               </div>
             )}
           </div>
@@ -179,6 +243,28 @@ export const PersonForm: React.FC<PersonFormProps> = ({
                 />
                 <span className="text-sm font-medium text-slate-700">É cônjuge?</span>
               </label>
+            </div>
+          )}
+
+          {/* Seletor de Titular (quando é cônjuge) */}
+          {person.isSpouse && availableTitulars.length > 0 && (
+            <div className="form-control w-full md:col-span-2 lg:col-span-4">
+              <label className="label">
+                <span className="text-slate-700 font-medium">Vincular a Titular</span>
+              </label>
+              <select
+                className="select select-bordered w-full"
+                value={spouse?.id || ''}
+                onChange={(e) => handleTitularChange(e.target.value)}
+              >
+                <option value="">Selecione um titular...</option>
+                {availableTitulars.map((titular, idx) => (
+                  <option key={titular.id} value={titular.id}>
+                    {role === 'buyers' ? 'Comprador' : role === 'sellers' ? 'Vendedor' : 'Titular'} {idx + 1}
+                    {titular.maritalState && ` (${titular.maritalState.replace('_', ' ')})`}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
         </div>

@@ -94,6 +94,7 @@ export interface Person {
   maritalState?: MaritalState;
   propertyRegime?: PropertyRegime;
   isSpouse?: boolean;
+  coupleId?: string; // ID compartilhado entre os membros do casal
 }
 
 // Mapping value with source tracking
@@ -144,6 +145,28 @@ export const createDefaultPerson = (id?: string): Person => ({
   maritalState: 'solteiro',
   isSpouse: false,
 });
+
+// Gerar novo coupleId
+export const generateCoupleId = (): string => `couple_${crypto.randomUUID()}`;
+
+// Verificar se duas pessoas formam um casal
+export const areCouple = (person1: Person, person2: Person): boolean => {
+  return !!person1.coupleId && !!person2.coupleId && person1.coupleId === person2.coupleId;
+};
+
+// Obter o cônjuge de uma pessoa
+export const getSpouse = (person: Person, people: Person[]): Person | undefined => {
+  if (!person.coupleId) return undefined;
+  return people.find(p => 
+    p.id !== person.id && 
+    p.coupleId === person.coupleId
+  );
+};
+
+// Obter todos os membros de um casal
+export const getCoupleMembers = (coupleId: string, people: Person[]): Person[] => {
+  return people.filter(p => p.coupleId === coupleId);
+};
 
 export const CONTRACT_FIELDS = [
   { id: 'seller_name', label: 'Nome do Vendedor' },

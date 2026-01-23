@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/Button';
 import { AlertTriangle, ArrowLeft, ArrowRight, RefreshCcw, RotateCw } from 'lucide-react';
-import type { UploadedFile, DealConfig } from '@/types/types';
+import type { UploadedFile, DealConfig, Person } from '@/types/types';
 import { BuyerDocumentsTab } from '../components/documents/BuyerDocumentsTab';
 import { SellerDocumentsTab } from '../components/documents/SellerDocumentsTab';
 import { PropertyDocumentsTab } from '../components/documents/PropertyDocumentsTab';
@@ -11,6 +11,9 @@ import type { ConsolidatedChecklist, ChecklistRequestDTO } from '@/types/checkli
 import { ChecklistSummary } from '../components/documents/ChecklistSummary';
 import { useOcr } from '@/hooks/useOcr';
 import { useRemoveDocumentFromDeal } from '../hooks/useDeals';
+import { useCoupleValidation } from '../hooks/useCoupleValidation';
+import { useCoupleValidationSocket } from '../hooks/useCoupleValidationSocket';
+import { getCoupleValidationCache } from '../services/couple-validation-cache.service';
 
 interface DocumentsStepProps {
 	files: UploadedFile[];
@@ -45,6 +48,14 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 	const previousConfigRef = useRef<string | null>(null);
 	const isInitialLoadRef = useRef(true);
 
+	// Estado de validação de casais
+	const [coupleValidations, setCoupleValidations] = useState<Map<string, any>>(new Map());
+	const [validatingCouples, setValidatingCouples] = useState<Set<string>>(new Set());
+	const [coupleValidationAttempts, setCoupleValidationAttempts] = useState<Map<string, number>>(new Map());
+	const { validateCouple } = useCoupleValidation();
+
+	const MAX_VALIDATION_ATTEMPTS = 3;
+
 	// Integração com OCR
 	const {
 		stats: ocrStats,
@@ -57,9 +68,43 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 		onComplete: (_documentId, extractedData, localFileId) => {
 			onFilesChange(prevFiles => prevFiles.map(prevFile => {
 				if (prevFile.id === localFileId) {
+					// Validar se o tipo de documento identificado corresponde ao tipo esperado
+					const expectedType = prevFile.type;
+					const extractedType = extractedData?.tipo_documento;
+
+					// Verificar se há incompatibilidade de tipo
+					let validated = true;
+					let validationError: string | undefined;
+
+					if (extractedType && extractedType !== expectedType) {
+						// Tipos específicos de certidão de casamento
+						const marriageCertTypes = ['CERTIDAO_CASAMENTO', 'CERTIDAO_CASAMENTO_AVERBACAO_OBITO', 'CERTIDAO_CASAMENTO_AVERBACAO_DIVORCIO'];
+						const birthCertTypes = ['CERTIDAO_NASCIMENTO'];
+
+						// Se esperamos certidão de casamento mas recebemos certidão de nascimento
+						if (marriageCertTypes.includes(expectedType) && birthCertTypes.includes(extractedType)) {
+							validated = false;
+							validationError = `DOCUMENT_TYPE_MISMATCH:expected=${expectedType},extracted=${extractedType}`;
+							console.error(`❌ Tipo de documento incompatível: esperado=${expectedType}, extraído=${extractedType}`);
+						}
+						// Se esperamos certidão de nascimento mas recebemos certidão de casamento
+						else if (birthCertTypes.includes(expectedType) && marriageCertTypes.includes(extractedType)) {
+							validated = false;
+							validationError = `DOCUMENT_TYPE_MISMATCH:expected=${expectedType},extracted=${extractedType}`;
+							console.error(`❌ Tipo de documento incompatível: esperado=${expectedType}, extraído=${extractedType}`);
+						}
+						// Outros casos de incompatibilidade
+						else if (extractedType !== expectedType) {
+							validated = false;
+							validationError = `DOCUMENT_TYPE_MISMATCH:expected=${expectedType},extracted=${extractedType}`;
+							console.error(`❌ Tipo de documento incompatível: esperado=${expectedType}, extraído=${extractedType}`);
+						}
+					}
+
 					return {
 						...prevFile,
-						validated: true,
+						validated,
+						validationError,
 						ocrExtractedData: extractedData,
 					};
 				}
@@ -86,8 +131,8 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 	// Verificar status de arquivos em processamento ao montar ou quando arquivos mudarem
 	useEffect(() => {
 		const processingFiles = files.filter(f =>
-			f.ocrStatus === 'processing' ||
-			f.ocrStatus === 'uploading'
+			(f.ocrStatus === 'processing' || f.ocrStatus === 'uploading') &&
+			f.ocrError === undefined
 		);
 
 		if (processingFiles.length > 0 && !isCheckingStatus) {
@@ -206,6 +251,238 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 
 	const deedCountClamped = Math.min(Math.max(config.deedCount || 1, 1), 5);
 
+	// Função helper para verificar se todos documentos do casal estão completos
+	const checkCoupleDocumentsComplete = useCallback((
+		members: Person[],
+		category: 'buyers' | 'sellers'
+	): boolean => {
+		if (!checklist || members.length !== 2) return false;
+
+		const requiredDocs = category === 'buyers'
+			? checklist.compradores.documentos.filter(d => d.obrigatorio)
+			: checklist.vendedores.documentos.filter(d => d.obrigatorio);
+
+		// Verificar se ambos os membros têm todos os documentos
+		return members.every(member => {
+			const isSpouse = member.isSpouse || false;
+			const expectedDe = isSpouse ? 'conjuge' : 'titular';
+			const docsForThisPerson = requiredDocs.filter(doc =>
+				!doc.de || doc.de === expectedDe
+			);
+
+			// Se não há documentos obrigatórios para esta pessoa, algo está errado
+			if (docsForThisPerson.length === 0) return false;
+
+			const memberFiles = files.filter(f =>
+				f.category === category &&
+				f.personId === member.id
+			);
+
+			// Cada documento obrigatório deve ter pelo menos 1 arquivo validado
+			const hasAllDocs = docsForThisPerson.every(doc => {
+				const matchingFiles = memberFiles.filter(f => fileSatisfiesType(f, doc.id));
+				return matchingFiles.length > 0 && matchingFiles.every(f => f.validated === true);
+			});
+
+			return hasAllDocs;
+		});
+	}, [checklist, files]);
+
+	// Função para validar casal se necessário (com limite de tentativas)
+	const validateCoupleIfNeeded = useCallback(async (coupleId: string, members: Person[]) => {
+		if (!dealId) return;
+
+		// Verificar se já está validando
+		if (validatingCouples.has(coupleId)) {
+			console.log(`⏳ Casal ${coupleId} já está sendo validado, pulando...`);
+			return;
+		}
+
+		// Verificar se já foi validado com sucesso
+		if (coupleValidations.has(coupleId)) {
+			console.log(`✅ Casal ${coupleId} já foi validado, pulando...`);
+			return;
+		}
+
+		// Verificar número de tentativas
+		const attempts = coupleValidationAttempts.get(coupleId) || 0;
+		if (attempts >= MAX_VALIDATION_ATTEMPTS) {
+			console.warn(`⚠️ Casal ${coupleId} atingiu o limite de ${MAX_VALIDATION_ATTEMPTS} tentativas de validação`);
+			return;
+		}
+
+		const titular = members.find(m => !m.isSpouse);
+		const conjuge = members.find(m => m.isSpouse);
+
+		if (!titular || !conjuge) {
+			console.warn('❌ Casal incompleto:', { coupleId, members });
+			return;
+		}
+
+		// Incrementar contador de tentativas
+		setCoupleValidationAttempts(prev => {
+			const newMap = new Map(prev);
+			newMap.set(coupleId, attempts + 1);
+			return newMap;
+		});
+
+		console.log(`🔍 Tentativa ${attempts + 1}/${MAX_VALIDATION_ATTEMPTS}: Iniciando validação automática do casal ${coupleId}`);
+		setValidatingCouples(prev => new Set(prev).add(coupleId));
+
+		try {
+			await validateCouple.mutateAsync({
+				dealId,
+				coupleId,
+				titularPersonId: titular.id,
+				conjugePersonId: conjuge.id,
+			});
+			console.log(`📤 Validação do casal ${coupleId} disparada (resultado via WebSocket)`);
+		} catch (error) {
+			console.error(`❌ Erro na tentativa ${attempts + 1} de validação do casal ${coupleId}:`, error);
+
+			// Se atingiu o limite de tentativas, remover da lista de validações para permitir revalidação manual
+			if (attempts + 1 >= MAX_VALIDATION_ATTEMPTS) {
+				console.warn(`🚫 Casal ${coupleId} atingiu o limite de tentativas. Validação automática desabilitada.`);
+			}
+		} finally {
+			// Não remover aqui: o lock é liberado via eventos WS (completed/error)
+		}
+	}, [dealId, validateCouple, validatingCouples, coupleValidations, coupleValidationAttempts, MAX_VALIDATION_ATTEMPTS]);
+
+	// Eventos via WebSocket para completar a validação do casal sem timeout.
+	useCoupleValidationSocket({
+		onStarted: (evt) => {
+			if (evt.dealId !== (dealId || '')) return;
+			setValidatingCouples(prev => new Set(prev).add(evt.coupleId));
+		},
+		onCompleted: (evt) => {
+			if (evt.dealId !== (dealId || '')) return;
+			setCoupleValidations(prev => {
+				const newMap = new Map(prev);
+				newMap.set(evt.coupleId, evt.result);
+				return newMap;
+			});
+			setValidatingCouples(prev => {
+				const newSet = new Set(prev);
+				newSet.delete(evt.coupleId);
+				return newSet;
+			});
+		},
+		onError: (evt) => {
+			if (evt.dealId !== (dealId || '')) return;
+			console.error(`❌ Erro na validação do casal ${evt.coupleId}:`, evt.error);
+			setValidatingCouples(prev => {
+				const newSet = new Set(prev);
+				newSet.delete(evt.coupleId);
+				return newSet;
+			});
+		},
+	});
+
+	// Validação automática de casais quando documentos estão completos
+	// Debounce para evitar múltiplas validações simultâneas
+	useEffect(() => {
+		if (!checklist || !dealId) return;
+
+		// Usar timeout para debounce de 1 segundo
+		const timeoutId = setTimeout(() => {
+			// Agrupar vendedores por casal
+			const sellersByCouple = new Map<string, Person[]>();
+			config.sellers.forEach(seller => {
+				if (seller.coupleId) {
+					if (!sellersByCouple.has(seller.coupleId)) {
+						sellersByCouple.set(seller.coupleId, []);
+					}
+					sellersByCouple.get(seller.coupleId)!.push(seller);
+				}
+			});
+
+			// Agrupar compradores por casal
+			const buyersByCouple = new Map<string, Person[]>();
+			config.buyers.forEach(buyer => {
+				if (buyer.coupleId) {
+					if (!buyersByCouple.has(buyer.coupleId)) {
+						buyersByCouple.set(buyer.coupleId, []);
+					}
+					buyersByCouple.get(buyer.coupleId)!.push(buyer);
+				}
+			});
+
+			// Verificar cada casal de vendedores
+			sellersByCouple.forEach((members, coupleId) => {
+				if (members.length === 2) {
+					const isCoupleComplete = checkCoupleDocumentsComplete(members, 'sellers');
+					if (isCoupleComplete) {
+						console.log(`📋 Casal ${coupleId} (vendedores) tem todos os documentos completos`);
+						validateCoupleIfNeeded(coupleId, members);
+					} else {
+						console.log(`📋 Casal ${coupleId} (vendedores) ainda não tem todos os documentos`);
+					}
+				}
+			});
+
+			// Verificar cada casal de compradores
+			buyersByCouple.forEach((members, coupleId) => {
+				if (members.length === 2) {
+					const isCoupleComplete = checkCoupleDocumentsComplete(members, 'buyers');
+					if (isCoupleComplete) {
+						console.log(`📋 Casal ${coupleId} (compradores) tem todos os documentos completos`);
+						validateCoupleIfNeeded(coupleId, members);
+					} else {
+						console.log(`📋 Casal ${coupleId} (compradores) ainda não tem todos os documentos`);
+					}
+				}
+			});
+		}, 1000); // Debounce de 1 segundo
+
+		return () => clearTimeout(timeoutId);
+	}, [files, config.sellers, config.buyers, checklist, dealId, checkCoupleDocumentsComplete, validateCoupleIfNeeded]);
+
+	// Hidratar cache persistido do backend ao montar (evita revalidação em remount)
+	useEffect(() => {
+		if (!dealId) return;
+		let cancelled = false;
+
+		// Ao trocar de deal, limpar cache local para evitar mistura
+		setCoupleValidations(new Map());
+		setValidatingCouples(new Set());
+
+		(async () => {
+			try {
+				const resp = await getCoupleValidationCache(dealId);
+				if (cancelled) return;
+
+				const couples = resp?.couples || {};
+
+				setCoupleValidations(() => {
+					const map = new Map<string, any>();
+					Object.entries(couples).forEach(([coupleId, entry]) => {
+						if (entry.status === 'COMPLETED' && entry.result) {
+							map.set(coupleId, entry.result);
+						}
+					});
+					return map;
+				});
+
+				setValidatingCouples(() => {
+					const set = new Set<string>();
+					Object.entries(couples).forEach(([coupleId, entry]) => {
+						if (entry.status === 'PROCESSING') {
+							set.add(coupleId);
+						}
+					});
+					return set;
+				});
+			} catch (err) {
+				console.warn('⚠️ Falha ao hidratar cache de validação de casais:', err);
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [dealId]);
+
 	const validationGate = useCallback(() => {
 		if (!checklist) {
 			return { canContinue: false, message: 'Carregando checklist de documentos...' };
@@ -232,31 +509,55 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 
 		let missingRequired = 0;
 
-		// Vendedores
-		const sellerRequiredDocs = checklist.vendedores.documentos.filter(d => d.obrigatorio);
-		config.sellers.forEach((seller) => {
-			const isSpouse = seller.isSpouse || false;
-			const expectedDe = isSpouse ? 'conjuge' : 'titular';
-			const docsForThisSeller = sellerRequiredDocs.filter(doc => !doc.de || doc.de === expectedDe);
-			const sellerFiles = blockingFiles.filter(f => f.category === 'sellers' && f.personId === seller.id);
+		// Agrupar vendedores por casal
+		const sellersByCouple = new Map<string, Person[]>();
+		config.sellers.forEach(seller => {
+			const coupleId = seller.coupleId || `single_${seller.id}`;
+			if (!sellersByCouple.has(coupleId)) {
+				sellersByCouple.set(coupleId, []);
+			}
+			sellersByCouple.get(coupleId)!.push(seller);
+		});
 
-			docsForThisSeller.forEach(doc => {
-				const hasValidated = sellerFiles.some(f => fileSatisfiesType(f, doc.id) && f.validated === true);
-				if (!hasValidated) missingRequired += 1;
+		// Vendedores - validar considerando casais
+		const sellerRequiredDocs = checklist.vendedores.documentos.filter(d => d.obrigatorio);
+		sellersByCouple.forEach((coupleMembers) => {
+			coupleMembers.forEach((seller) => {
+				const isSpouse = seller.isSpouse || false;
+				const expectedDe = isSpouse ? 'conjuge' : 'titular';
+				const docsForThisSeller = sellerRequiredDocs.filter(doc => !doc.de || doc.de === expectedDe);
+				const sellerFiles = blockingFiles.filter(f => f.category === 'sellers' && f.personId === seller.id);
+
+				docsForThisSeller.forEach(doc => {
+					const hasValidated = sellerFiles.some(f => fileSatisfiesType(f, doc.id) && f.validated === true);
+					if (!hasValidated) missingRequired += 1;
+				});
 			});
 		});
 
-		// Compradores
-		const buyerRequiredDocs = checklist.compradores.documentos.filter(d => d.obrigatorio);
-		config.buyers.forEach((buyer) => {
-			const isSpouse = buyer.isSpouse || false;
-			const expectedDe = isSpouse ? 'conjuge' : 'titular';
-			const docsForThisBuyer = buyerRequiredDocs.filter(doc => !doc.de || doc.de === expectedDe);
-			const buyerFiles = blockingFiles.filter(f => f.category === 'buyers' && f.personId === buyer.id);
+		// Agrupar compradores por casal
+		const buyersByCouple = new Map<string, Person[]>();
+		config.buyers.forEach(buyer => {
+			const coupleId = buyer.coupleId || `single_${buyer.id}`;
+			if (!buyersByCouple.has(coupleId)) {
+				buyersByCouple.set(coupleId, []);
+			}
+			buyersByCouple.get(coupleId)!.push(buyer);
+		});
 
-			docsForThisBuyer.forEach(doc => {
-				const hasValidated = buyerFiles.some(f => fileSatisfiesType(f, doc.id) && f.validated === true);
-				if (!hasValidated) missingRequired += 1;
+		// Compradores - validar considerando casais
+		const buyerRequiredDocs = checklist.compradores.documentos.filter(d => d.obrigatorio);
+		buyersByCouple.forEach((coupleMembers) => {
+			coupleMembers.forEach((buyer) => {
+				const isSpouse = buyer.isSpouse || false;
+				const expectedDe = isSpouse ? 'conjuge' : 'titular';
+				const docsForThisBuyer = buyerRequiredDocs.filter(doc => !doc.de || doc.de === expectedDe);
+				const buyerFiles = blockingFiles.filter(f => f.category === 'buyers' && f.personId === buyer.id);
+
+				docsForThisBuyer.forEach(doc => {
+					const hasValidated = buyerFiles.some(f => fileSatisfiesType(f, doc.id) && f.validated === true);
+					if (!hasValidated) missingRequired += 1;
+				});
 			});
 		});
 
@@ -343,6 +644,9 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 					onFilesChange={onFilesChange}
 					onRemoveFile={handleRemoveFile}
 					checklist={checklist}
+					dealId={dealId}
+					coupleValidations={coupleValidations}
+					validatingCouples={validatingCouples}
 				/>
 			case 'sellers':
 				return <SellerDocumentsTab
@@ -351,6 +655,9 @@ export const DocumentsStep: React.FC<DocumentsStepProps> = ({
 					onFilesChange={onFilesChange}
 					onRemoveFile={handleRemoveFile}
 					checklist={checklist}
+					dealId={dealId}
+					coupleValidations={coupleValidations}
+					validatingCouples={validatingCouples}
 				/>
 			case 'property':
 				return <PropertyDocumentsTab

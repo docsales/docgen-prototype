@@ -4,6 +4,7 @@ import type { UploadedFile } from '@/types/types';
 import { OcrStatusLoader } from './OcrStatusLoader';
 import { OcrStatus } from '@/types/ocr.types';
 import { UtilsService } from '@/services/utils.service';
+import { translateValidationError } from '@/utils/validationErrorMessages';
 
 interface DocumentRequirementItemProps {
 	documentId: string;
@@ -268,9 +269,18 @@ export const DocumentRequirementItem: React.FC<DocumentRequirementItemProps> = (
 														<span className="text-xs text-yellow-600 font-semibold animate-pulse">⌛ Validando...</span>
 													)}
 												</div>
-												{file.validationError && (
-													<p className="text-xs text-red-600 mt-1">{file.validationError}</p>
-												)}
+												{file.validationError && (() => {
+													const errorInfo = translateValidationError(file.validationError);
+													return (
+														<div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+															<p className="text-xs font-semibold text-red-800">{errorInfo.title}</p>
+															<p className="text-xs text-red-600 mt-1">{errorInfo.message}</p>
+															{errorInfo.suggestion && (
+																<p className="text-xs text-red-500 mt-1 italic">{errorInfo.suggestion}</p>
+															)}
+														</div>
+													);
+												})()}
 											</div>
 
 											{onRemoveFile && (

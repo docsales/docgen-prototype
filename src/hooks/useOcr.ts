@@ -52,6 +52,10 @@ export const useOcr = (
           ocrWhisperHash: whisperHash || f.ocrWhisperHash,
           ocrError: error,
           ocrExtractedData: extractedData || f.ocrExtractedData,
+          // Se o status é ERROR, marcar como não validado
+          validated: status === OcrStatus.ERROR ? false : f.validated,
+          // Se há erro, armazenar como validationError também
+          validationError: error || f.validationError,
         };
       }
       return f;
@@ -262,7 +266,11 @@ export const useOcr = (
    * Refresh manual - força processamento em batch de todos os arquivos em processamento
    */
   const manualRefresh = useCallback((currentFiles: UploadedFile[]) => {
-    const processingFiles = currentFiles.filter(f => f.ocrStatus === OcrStatus.PROCESSING || f.ocrStatus === OcrStatus.UPLOADING);
+    // Filtrar apenas documentos que estão realmente processando (não ERROR)
+    const processingFiles = currentFiles.filter(f => 
+      (f.ocrStatus === OcrStatus.PROCESSING || f.ocrStatus === OcrStatus.UPLOADING) &&
+      f.ocrStatus !== OcrStatus.ERROR
+    );
 
     if (processingFiles.length === 0) return;
 
